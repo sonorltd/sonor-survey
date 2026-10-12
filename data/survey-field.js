@@ -148,6 +148,10 @@
     // where-strip follows page / session changes — poll the cheap way (state is plain) rather than threading hooks through the editor
     var last = ''; setInterval(function () { var S = A().state, k = [S.pid, S.session && S.session.id, S.page && S.page.id, S.page && S.page.floor_code, S.page && S.page.room, S.page && S.page.title].join('|'); if (k !== last) { last = k; renderWhere(); refreshFindLabel(); } }, 600);
     refreshFindLabel(); renderWhere();
+    // v0.8.0 cross-app links — the same project, one tap away (sonor-brand appUrls; local when we are running from the Drive)
+    function openLinks() { var S = A().state, B = window.SonorBrand, local = /^(file:|http:\/\/(127|localhost))/.test(location.href), urls = (B && B.appUrls && B.appUrls[local ? 'local' : 'hosted']) || {};
+      $$('[data-open]').forEach(function (a) { var base = urls[a.dataset.open]; if (!base || !S.pid) { a.classList.add('disabled'); a.removeAttribute('href'); return; } a.classList.remove('disabled'); var path = a.dataset.openPath ? base.replace(/\/[^\/]*$/, '/') + a.dataset.openPath : base; a.href = path + (path.indexOf('?') >= 0 ? '&' : '?') + 'pid=' + encodeURIComponent(S.pid) + '&project=' + encodeURIComponent(S.pid); }); }
+    document.addEventListener('sonor:project-changed', function () { setTimeout(openLinks, 80); }); openLinks(); setInterval(openLinks, 2000);
     try { if (localStorage.getItem(FOCUS_KEY) === '1') setFocus(true); } catch (e) { }
     // photo actions live in the page ⋯ menu: keep them in step with the page kind
     var mo = new MutationObserver(function () { var p = A().state.page; var isPhoto = !!(p && p.kind === 'photo'); $('#svPhotoRetake').hidden = !isPhoto; $('#svPhotoChange').hidden = !isPhoto; });

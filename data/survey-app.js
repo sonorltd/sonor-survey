@@ -34,8 +34,12 @@
     $('#svPages').innerHTML = '';
     S.sessions = await window.SurveyStore.listSessions(pid);
     renderSessions();
-    var open = S.sessions.find(function (s) { return s.status === 'open'; }) || S.sessions[0];
-    if (open) openSession(open.id);
+    // v0.8.0 deep links (sonor-survey-link.js): ?session=&page= open that page · ?action=new starts a survey — once, then forgotten
+    var q = new URLSearchParams(location.search), want = S.deepOnce ? null : { session: q.get('session'), page: q.get('page'), action: q.get('action') }; S.deepOnce = true;
+    if (want && want.action === 'new') { try { history.replaceState(null, '', location.pathname + '?pid=' + pid); } catch (e) { } return newSession(); }
+    var open = (want && want.session && S.sessions.find(function (s) { return s.id === want.session; })) || S.sessions.find(function (s) { return s.status === 'open'; }) || S.sessions[0];
+    if (open) await openSession(open.id);
+    if (want && want.page && S.pages.some(function (p) { return p.id === want.page; })) openPage(want.page);
   }
   async function projectRow() {
     if (S.project && S.project.id === S.pid) return S.project;

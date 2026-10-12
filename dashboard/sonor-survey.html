@@ -29,7 +29,8 @@
 <script src="../data/sonor-header.js"></script>
 <script src="../data/sonor-project-list.js"></script>
 <script src="../data/sonor-project-bar.js"></script>
-<script src="../data/sonor-ink.js"></script>   <!-- shared ink renderer (root master, synced) — Takeoffs' survey-ink layer paints with the same code -->
+<script src="../data/sonor-ink.js"></script>
+<script src="../data/sonor-survey-link.js"></script>   <!-- shared survey seam (root master, synced) — other apps pull survey photos / pins / devices through it -->   <!-- shared ink renderer (root master, synced) — Takeoffs' survey-ink layer paints with the same code -->
 <script src="../data/survey-config.js"></script>
 <script src="../data/survey-ink.js"></script>
 <script src="../data/survey-store.js"></script>
@@ -201,6 +202,11 @@ body.sv-focus .sv-focus-chip { display: flex; }
       <button class="btn" id="svClose" type="button">✓ Complete survey</button>
       <button class="btn" id="svPublish" type="button">⬆ Publish to project</button>
       <button class="btn" id="svReport" type="button">📄 Report PDF</button>
+      <span class="sv-menu-sep"></span>
+      <div class="sv-menu-head">Open this project in</div>
+      <a class="btn" data-open="garden-lighting" href="#" target="_blank" rel="noopener">🌿 Garden Lighting ↗</a>
+      <a class="btn" data-open="takeoffs" href="#" target="_blank" rel="noopener">📐 Takeoffs ↗</a>
+      <a class="btn" data-open="pm" data-open-path="brief.html" href="#" target="_blank" rel="noopener">📋 Project brief ↗</a>
     </div></span>
   <span class="sv-grow"></span>
   <span class="sv-where" id="svWhere" title="Where you are recording"></span>
@@ -302,7 +308,7 @@ body.sv-focus .sv-focus-chip { display: flex; }
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.7.0';
+  const APP_VERSION = '0.8.0';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>

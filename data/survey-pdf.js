@@ -1,4 +1,4 @@
-/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.6.0 — hi-res page images, service-ordered legends, pins lists + summary)
+/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.8.0 — neutral theme + gold cover mark; hi-res page images, service-ordered legends, pins lists + summary)
  * The luxury proposal chrome (root master data/sonor-pdf-luxury.js — cover · pageHead brand:'large' · pageFoot ·
  * sectionHead · specRows) on pdf-lib. Page images come from SurveyInk.renderPage (paper + photos + ink + marks) so the
  * PDF is exactly what was on the iPad. One A4 portrait per survey page; checklists as tick tables (paginated).
@@ -93,6 +93,7 @@ window.SurveyPdf = (function () {
   // ── report ──
   async function report(m) {
     var lx = L(), PL = window.PDFLib, A4 = lx.A4, M = lx.M, C = lx.COL, W = A4.w - M * 2;
+    if (lx.theme) lx.theme('neutral');   // v0.8.0 — working document: white paper, neutral greys, gold accents (Bryn: cream is for the luxury proposals only)
     var doc = await PL.PDFDocument.create();
     doc.setTitle((m.session.title || 'Survey') + ' — ' + (m.project.name || '')); doc.setAuthor('Sonor Smart Homes');
     var F = await lx.makeFonts(doc, BASE);
@@ -123,7 +124,7 @@ window.SurveyPdf = (function () {
         var hero = null; try { hero = await lx.loadImage(doc, BASE + 'survey-cover.jpg'); } catch (e) { try { if (m.coverBlob) hero = await blobJpg(doc, m.coverBlob); } catch (e2) { } }
         var cp = doc.addPage([A4.w, A4.h]), CP = lx.mk(cp, doc);
         lx.cover(CP, F, { hero: hero, fadeImg: fade, eyebrow: kindLabel(m.session.kind), title: pd(m.session.title || kindLabel(m.session.kind)), subtitle: pd([m.project.name, m.project.address].filter(Boolean).join(' · ')),
-          info: [['CLIENT', pd(m.project.client_name || '—')], ['DATE', fmtDate(m.session.started_at)], ['ENGINEER', pd(m.engineer || m.session.engineer || 'Sonor')]], cediaImg: cedia, brandLarge: true, airy: true });
+          info: [['CLIENT', pd(m.project.client_name || '—')], ['DATE', fmtDate(m.session.started_at)], ['ENGINEER', pd(m.engineer || m.session.engineer || 'Sonor')]], cediaImg: cedia, brandLarge: true, brandColour: lx.COL.GOLD, topShade: 0.6, airy: true });   // gold mark on the bright hero
       }
       // ── summary ──
       var P = newPage('SUMMARY');
@@ -226,7 +227,7 @@ window.SurveyPdf = (function () {
           for (var t = 0; t < thumbs.length; t++) {
             if (col === 4) { col = 0; y3 += cellH; if (y3 + cellH > FOOT) { foot(PP); PP = newPage(label); PP.text(fit(F.b, title + ' — photos (cont.)', 14, W), M, 88, 14, F.b, C.INK); y3 = head(PP, 112); } }
             var tp = thumbs[t], ts = tp.model.space, k = Math.min(tw / ts.w, th / ts.h), iw = ts.w * k, ih = ts.h * k, ix = M + col * (tw + gap) + (tw - iw) / 2, iy = y3 + (th - ih) / 2;
-            if (!state.dry) { var tim = await pageImg(tp, 480); PP.rect(M + col * (tw + gap), y3, tw, th, [238, 234, 226]); PP.image(tim, ix, iy, iw, ih, 1); PP.rectB(M + col * (tw + gap), y3, tw, th, C.LINE, 0.5); }
+            if (!state.dry) { var tim = await pageImg(tp, 480); PP.rect(M + col * (tw + gap), y3, tw, th, [242, 242, 242]); PP.image(tim, ix, iy, iw, ih, 1); PP.rectB(M + col * (tw + gap), y3, tw, th, C.LINE, 0.5); }
             var lab = (tp.row.title || tp.row.room || 'Site photo'), tg = A.tag[tp.row.id] || '', pmk = A.pinnedBy[tp.row.id] && A.pinnedBy[tp.row.id].mark;
             var lx0 = M + col * (tw + gap), lw = tagPill(PP, F, tg, lx0, y3 + th + 4);
             PP.text(fit(F.r, lab + (pmk && pmk.kind !== 'photo' ? ' · ' + (pmk.label || pmk.code) : ''), 7.5, tw - lw - 6), lx0 + lw + 4, y3 + th + 5, 7.5, F.r, C.INK2);
@@ -264,5 +265,5 @@ window.SurveyPdf = (function () {
     return doc.save();
   }
   function download(bytes, name) { var b = new Blob([bytes], { type: 'application/pdf' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(u); }, 4000); }
-  return { report: report, download: download, VERSION: '0.6.0' };
+  return { report: report, download: download, VERSION: '0.8.0' };
 })();
