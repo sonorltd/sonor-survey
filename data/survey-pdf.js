@@ -1,4 +1,4 @@
-/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.5.0)
+/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.5.1)
  * The luxury proposal chrome (root master data/sonor-pdf-luxury.js — cover · pageHead brand:'large' · pageFoot ·
  * sectionHead · specRows) on pdf-lib. Page images come from SurveyInk.renderPage (paper + photos + ink + marks) so the
  * PDF is exactly what was on the iPad. One A4 portrait per survey page; checklists as tick tables (paginated).
@@ -48,23 +48,12 @@ window.SurveyPdf = (function () {
   function tagPill(P, F, tag, x, top) { var sz = 7, w = F.b.widthOfTextAtSize(tag, sz) + 8; P.rect(x, top, w, 11, DARK); P.text(tag, x + 4, top + 1.6, sz, F.b, WHITE); return w; }
 
   // ── analysis: tags, counts, cross-links ──
-  function analyse(pages) {
+  function analyse(pages) {   // v0.5.1 — the ONE numbering (SurveyInk.photoTags): any page's pins count, not only plan pages
     var byId = {}; pages.forEach(function (p) { byId[p.row.id] = p; });
-    var tag = {}, seq = 0, pinnedBy = {};   // tag[photoPageId] = 'P3' · pinnedBy[photoPageId] = { plan page, mark }
-    pages.forEach(function (p) {
-      if (p.row.kind !== 'plan' || !p.model) return;
-      (p.model.marks || []).forEach(function (m) {
-        var pid = m.photo_page_id; if (!pid || !byId[pid] || tag[pid]) return;
-        tag[pid] = 'P' + (++seq); pinnedBy[pid] = { plan: p, mark: m };
-      });
-    });
-    pages.forEach(function (p) {   // photos whose pin record points at a plan but the mark lost its link, then unpinned photos
-      if (p.row.kind !== 'photo' || tag[p.row.id]) return;
-      tag[p.row.id] = 'P' + (++seq);
-      var pin = p.row.metadata && p.row.metadata.plan_pin; if (pin && pin.page_id && byId[pin.page_id]) pinnedBy[p.row.id] = { plan: byId[pin.page_id], mark: (byId[pin.page_id].model && (byId[pin.page_id].model.marks || []).find(function (m) { return m.id === pin.mark_id; })) || null };
-    });
+    var t = window.SurveyInk.photoTags(pages.map(function (p) { return p.row; })), pinnedBy = {};
+    Object.keys(t.pinnedBy).forEach(function (pid) { var pb = t.pinnedBy[pid], host = byId[pb.pageId]; if (!host) return; pinnedBy[pid] = { plan: host, mark: (host.model && (host.model.marks || []).find(function (m) { return m.id === pb.markId; })) || null }; });
     var thumbsFor = {}; Object.keys(pinnedBy).forEach(function (pid) { var pl = pinnedBy[pid].plan.row.id; (thumbsFor[pl] = thumbsFor[pl] || []).push(pid); });
-    return { byId: byId, tag: tag, pinnedBy: pinnedBy, thumbsFor: thumbsFor, photoCount: seq };
+    return { byId: byId, tag: t.tag, pinnedBy: pinnedBy, thumbsFor: thumbsFor, photoCount: t.count };
   }
   function legendItems(marks) {   // [{m, n}] in first-seen order, photo pins last
     var out = [], idx = {}, photos = 0, ph = null;
@@ -104,15 +93,7 @@ window.SurveyPdf = (function () {
     var A = analyse(pages), imgCache = {};
     async function pageImg(p, px, opts) {   // rendered once per (page, size); plan pages get the photo tags painted beside their pins
       var key = p.row.id + ':' + px; if (imgCache[key]) return imgCache[key];
-      var cv = window.SurveyInk.renderPage(p.model, null, px, opts || {});
-      if (p.row.kind === 'plan') {
-        var s = px / p.model.space.w, x = cv.getContext('2d'), r = Math.max((window.SonorInk && window.SonorInk.MARK_R) || 13, 24 / s) * s;
-        (p.model.marks || []).forEach(function (mk) { var t = mk.photo_page_id && A.tag[mk.photo_page_id]; if (!t) return;
-          x.save(); x.setTransform(1, 0, 0, 1, 0, 0); x.font ='bold ' + Math.round(r * 0.9) + 'px "DM Sans", system-ui, sans-serif'; x.textBaseline = 'middle'; var tw = x.measureText(t).width + r * 0.8;
-          var px0 = mk.x * s + r * 1.15, py0 = (mk.kind === 'photo' ? mk.y * s - r * 1.65 : mk.y * s) - r * 0.6;
-          x.fillStyle = '#1C1C1E'; x.beginPath(); x.roundRect ? x.roundRect(px0, py0, tw, r * 1.2, 3) : x.rect(px0, py0, tw, r * 1.2); x.fill();
-          x.fillStyle = '#fff'; x.fillText(t, px0 + r * 0.4, py0 + r * 0.62); x.restore(); });
-      }
+      var cv = window.SurveyInk.renderPage(p.model, null, px, Object.assign({ labels: A.tag }, opts || {}));
       var im = await canvasJpg(doc, cv, px > 600 ? 0.88 : 0.8); imgCache[key] = im; return im;
     }
     var state = { dry: true, n: 0, total: 0, pageNo: {} };
@@ -129,7 +110,8 @@ window.SurveyPdf = (function () {
       // ── cover ──
       state.n++;
       if (!state.dry) {
-        var hero = null; try { if (m.coverBlob) hero = await blobJpg(doc, m.coverBlob); } catch (e) { }
+        // v0.5.1 — PERMANENT cover (Bryn: "use a permanent image for the front cover, something that shows survey plans"): data/survey-cover.jpg; the first site photo is only the offline fallback
+        var hero = null; try { hero = await lx.loadImage(doc, BASE + 'survey-cover.jpg'); } catch (e) { try { if (m.coverBlob) hero = await blobJpg(doc, m.coverBlob); } catch (e2) { } }
         var cp = doc.addPage([A4.w, A4.h]), CP = lx.mk(cp, doc);
         lx.cover(CP, F, { hero: hero, fadeImg: fade, eyebrow: kindLabel(m.session.kind), title: pd(m.session.title || kindLabel(m.session.kind)), subtitle: pd([m.project.name, m.project.address].filter(Boolean).join(' · ')),
           info: [['CLIENT', pd(m.project.client_name || '—')], ['DATE', fmtDate(m.session.started_at)], ['ENGINEER', pd(m.engineer || m.session.engineer || 'Sonor')]], cediaImg: cedia, brandLarge: true, airy: true });
@@ -146,7 +128,7 @@ window.SurveyPdf = (function () {
       y = Math.max(y1, y2) + 14;
       // device schedule by floor
       var floors = [], byFloor = {}, all = {};
-      pages.forEach(function (p) { if (p.row.kind !== 'plan' || !p.model) return; var fc = p.row.floor_code || 'Plan'; if (!byFloor[fc]) { byFloor[fc] = {}; floors.push(fc); } var items = legendItems(p.model.marks); mergeLegend(items, byFloor[fc]); mergeLegend(items, all); });
+      pages.forEach(function (p) { if (!p.model || !(p.model.marks || []).length) return; var fc = p.row.floor_code || p.row.title || (p.row.kind === 'plan' ? 'Plan' : 'Notes'); if (!byFloor[fc]) { byFloor[fc] = {}; floors.push(fc); } var items = legendItems(p.model.marks); mergeLegend(items, byFloor[fc]); mergeLegend(items, all); });
       if (floors.length) {
         P.tracked('DEVICE SCHEDULE', M, y, 8.5, F.r, C.GOLD, 2.6); y += 18;
         floors.forEach(function (fc) {
@@ -174,7 +156,7 @@ window.SurveyPdf = (function () {
         if (r.kind === 'photo' && A.tag[r.id]) lab = A.tag[r.id] + ' · ' + lab;
         var meta = [r.floor_code, r.room].filter(Boolean).join(' · ');
         if (r.kind === 'checklist') { var pr = window.SurveyChecklist.progress(r.metadata.checklist); meta = (meta ? meta + ' · ' : '') + pr.done + '/' + pr.total + ' complete'; }
-        if (r.kind === 'plan' && p.model) { var li = legendItems(p.model.marks), nd = li.reduce(function (s, it) { return s + (it.m.kind === 'photo' ? 0 : it.n); }, 0), np = (A.thumbsFor[r.id] || []).length; meta = [meta, nd ? nd + ' devices' : '', np ? np + ' photos' : ''].filter(Boolean).join(' · '); }
+        if (p.model && (p.model.marks || []).length) { var li = legendItems(p.model.marks), nd = li.reduce(function (s, it) { return s + (it.m.kind === 'photo' ? 0 : it.n); }, 0), np = (A.thumbsFor[r.id] || []).length; meta = [meta, nd ? nd + ' devices' : '', np ? np + ' photos' : ''].filter(Boolean).join(' · '); }
         var pno = state.pageNo[r.id] || '';
         P.text(String(pno), M, y, 9.5, F.b, C.INK); P.text(fit(F.r, lab, 9.5, W - 190), M + 28, y, 9.5, F.r, C.INK); if (meta) P.right(fit(F.r, meta, 8.5, 170), A4.w - M, y + 1, 8.5, F.r, C.MUT);
         P.hline(M, A4.w - M, y + 15, C.LINE, 0.4, 0.7); y += 20;
@@ -189,11 +171,11 @@ window.SurveyPdf = (function () {
         var PP = newPage(label); state.pageNo[r.id] = state.n;
         var title = r.title || (r.kind === 'plan' ? 'Plan — ' + (r.floor_code || '') : r.kind === 'photo' ? 'Site photo' : 'Notes'), sub = [r.floor_code, r.room].filter(Boolean).join(' · ');
         var tx = M;
-        if (r.kind === 'photo' && A.tag[r.id]) { tx += tagPill(PP, F, A.tag[r.id], M, 90) + 8; var pb = A.pinnedBy[r.id]; if (pb) { var pl = pb.plan.row; sub = [sub, 'pinned on ' + (pl.title || 'Plan — ' + (pl.floor_code || '')) + (state.pageNo[pl.id] ? ' (p.' + state.pageNo[pl.id] + ')' : '') + (pb.mark && pb.mark.kind !== 'photo' ? ' at ' + (pb.mark.label || pb.mark.code) : '')].filter(Boolean).join(' · '); } }
+        if (r.kind === 'photo' && A.tag[r.id]) { tx += tagPill(PP, F, A.tag[r.id], M, 90) + 8; var pb = A.pinnedBy[r.id]; if (pb) { var pl = pb.plan.row; sub = [sub, 'pinned on ' + (pl.title || (pl.kind === 'plan' ? 'Plan — ' + (pl.floor_code || '') : 'Notes')) + (state.pageNo[pl.id] ? ' (p.' + state.pageNo[pl.id] + ')' : '') + (pb.mark && pb.mark.kind !== 'photo' ? ' at ' + (pb.mark.label || pb.mark.code) : '')].filter(Boolean).join(' · '); } }
         PP.text(fit(F.b, title, 18, W - 120 - (tx - M)), tx, 88, 18, F.b, C.INK); if (sub) PP.right(fit(F.r, sub, 9, 300), A4.w - M, 94, 9, F.r, C.MUT);
         var top = 122, maxH = FOOT - top, maxW = W;
         if (!p.model) { PP.text('Page could not be rendered (image missing offline).', M, top, 9.5, F.r, C.MUT); foot(PP); continue; }
-        var sp = p.model.space, px = sp.w >= sp.h ? 1800 : 1400, legend = r.kind === 'plan' ? legendItems(p.model.marks) : [], thumbs = (A.thumbsFor[r.id] || []).map(function (pid) { return A.byId[pid]; }).filter(function (t) { return t && t.model; });
+        var sp = p.model.space, px = sp.w >= sp.h ? 1800 : 1400, legend = legendItems(p.model.marks), thumbs = (A.thumbsFor[r.id] || []).map(function (pid) { return A.byId[pid]; }).filter(function (t) { return t && t.model; });
         var reserve = (legend.length ? legendHeight(F, legend, W) + 10 : 0);
         var sc = Math.min(maxW / sp.w, (maxH - reserve) / sp.h), dw = sp.w * sc, dh = sp.h * sc, dx = M + (maxW - dw) / 2;
         if (!state.dry) { var img = await pageImg(p, px, { minMark: 24 }); PP.rectB(dx - 1, top - 1, dw + 2, dh + 2, C.LINE, 0.6); PP.image(img, dx, top, dw, dh, 1); }
@@ -203,10 +185,10 @@ window.SurveyPdf = (function () {
         if (thumbs.length) {
           var gap = 10, tw = (W - gap * 3) / 4, th = 96, cellH = th + 18, col = 0;
           function head(PX, yy) { PX.tracked('PINNED PHOTOS', M, yy, 7, F.r, C.GOLD, 2.2); return yy + 14; }
-          y3 += 6; if (y3 + 14 + cellH > FOOT) { foot(PP); PP = newPage('PLAN'); PP.text(fit(F.b, title + ' — photos', 14, W), M, 88, 14, F.b, C.INK); y3 = 112; }
+          y3 += 6; if (y3 + 14 + cellH > FOOT) { foot(PP); PP = newPage(label); PP.text(fit(F.b, title + ' — photos', 14, W), M, 88, 14, F.b, C.INK); y3 = 112; }
           y3 = head(PP, y3);
           for (var t = 0; t < thumbs.length; t++) {
-            if (col === 4) { col = 0; y3 += cellH; if (y3 + cellH > FOOT) { foot(PP); PP = newPage('PLAN'); PP.text(fit(F.b, title + ' — photos (cont.)', 14, W), M, 88, 14, F.b, C.INK); y3 = head(PP, 112); } }
+            if (col === 4) { col = 0; y3 += cellH; if (y3 + cellH > FOOT) { foot(PP); PP = newPage(label); PP.text(fit(F.b, title + ' — photos (cont.)', 14, W), M, 88, 14, F.b, C.INK); y3 = head(PP, 112); } }
             var tp = thumbs[t], ts = tp.model.space, k = Math.min(tw / ts.w, th / ts.h), iw = ts.w * k, ih = ts.h * k, ix = M + col * (tw + gap) + (tw - iw) / 2, iy = y3 + (th - ih) / 2;
             if (!state.dry) { var tim = await pageImg(tp, 480); PP.rect(M + col * (tw + gap), y3, tw, th, [238, 234, 226]); PP.image(tim, ix, iy, iw, ih, 1); PP.rectB(M + col * (tw + gap), y3, tw, th, C.LINE, 0.5); }
             var lab = (tp.row.title || tp.row.room || 'Site photo'), tg = A.tag[tp.row.id] || '', pmk = A.pinnedBy[tp.row.id] && A.pinnedBy[tp.row.id].mark;
@@ -246,5 +228,5 @@ window.SurveyPdf = (function () {
     return doc.save();
   }
   function download(bytes, name) { var b = new Blob([bytes], { type: 'application/pdf' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(u); }, 4000); }
-  return { report: report, download: download, VERSION: '0.5.0' };
+  return { report: report, download: download, VERSION: '0.5.1' };
 })();

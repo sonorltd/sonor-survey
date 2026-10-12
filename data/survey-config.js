@@ -2,7 +2,7 @@
 window.__SURVEY_CONFIG__ = (function () {
   'use strict';
   return {
-    version: '0.5.0',
+    version: '0.5.1',
     appKey: 'survey',
     buckets: { photos: 'site-photos', plans: 'takeoffs-plans' },
     // Page spaces (page-unit frames). PLAN = the Takeoffs world frame (1400×900 fit, anchored top-left) so a

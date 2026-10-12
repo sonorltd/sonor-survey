@@ -68,6 +68,36 @@ window.SurveyInk = (function () {
       else { ctx.fillStyle = '#eef0f4'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeStyle = '#b8bec8'; ctx.lineWidth = 1; ctx.strokeRect(o.x, o.y, o.w, o.h); }
     });
   }
+  // v0.5.1 — PHOTO TAGS (P1…Pn), the ONE numbering used by the app, the thumbnails and the report.
+  // pages: rows in strip order {id, kind, ink:{marks}, metadata:{plan_pin, hidden}}. Walk every page's marks in order
+  // (any page kind — Bryn pins on notes pages too), tag each linked photo page; then tag the photos nobody pinned.
+  // Returns { tag:{photoPageId:'P3'}, pinnedBy:{photoPageId:{pageId, markId}}, count }.
+  function photoTags(pages) {
+    var live = {}, tag = {}, pinnedBy = {}, n = 0;
+    (pages || []).forEach(function (p) { if (p && p.id && !(p.metadata && p.metadata.hidden)) live[p.id] = p; });
+    (pages || []).forEach(function (p) {
+      if (!live[p.id]) return;
+      (((p.ink || p).marks) || []).forEach(function (m) { var id = m.photo_page_id; if (!id || !live[id] || live[id].kind !== 'photo' || tag[id]) return; tag[id] = 'P' + (++n); pinnedBy[id] = { pageId: p.id, markId: m.id }; });
+    });
+    (pages || []).forEach(function (p) {
+      if (!live[p.id] || p.kind !== 'photo' || tag[p.id]) return;
+      tag[p.id] = 'P' + (++n);
+      var pin = p.metadata && p.metadata.plan_pin; if (pin && pin.page_id && live[pin.page_id]) pinnedBy[p.id] = { pageId: pin.page_id, markId: pin.mark_id || null };
+    });
+    return { tag: tag, pinnedBy: pinnedBy, count: n };
+  }
+  // Tag pills beside the pins, in PAGE units so they scale with the view (r = mark radius in page units).
+  function drawTags(ctx, marks, labels, r) {
+    if (!labels) return; r = r || (SI ? SI.MARK_R : 13);
+    (marks || []).forEach(function (m) {
+      var t = m.photo_page_id && labels[m.photo_page_id]; if (!t) return;
+      ctx.save(); var fs = Math.round(r * 0.9); ctx.font = 'bold ' + fs + 'px "DM Sans", system-ui, sans-serif'; ctx.textBaseline = 'middle';
+      var w = ctx.measureText(t).width + r * 0.8, h = r * 1.2, x = m.x + r * 1.15, y = (m.kind === 'photo' ? m.y - r * 1.65 : m.y) - h / 2;
+      ctx.fillStyle = '#1C1C1E'; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r * 0.25); else ctx.rect(x, y, w, h); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = Math.max(0.6, r * 0.08); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.fillText(t, x + r * 0.4, y + h / 2 + fs * 0.05); ctx.restore();
+    });
+  }
   // Static page → canvas. Returns the canvas. pxWidth = output width in px (height follows the page aspect).
   function renderPage(page, canvas, pxWidth, opts) {
     opts = opts || {};
@@ -78,7 +108,7 @@ window.SurveyInk = (function () {
     x.setTransform(s, 0, 0, s, 0, 0);
     drawPaper(x, page, 1 / s); drawObjects(x, page);
     // v0.4.2 — device/photo marks render in exports and thumbnails exactly as on the live bg layer (under the ink).
-    if (SI && page.marks && page.marks.length) SI.drawMarks(x, page.marks, { r: Math.max(SI.MARK_R, (opts.minMark || 0) / s) });
+    if (SI && page.marks && page.marks.length) { var mr = Math.max(SI.MARK_R, (opts.minMark || 0) / s); SI.drawMarks(x, page.marks, { r: mr }); drawTags(x, page.marks, opts.labels || page.labels, mr); }
     (page.strokes || []).forEach(function (st) { drawStroke(x, opts.minStroke ? Object.assign({}, st, { w: Math.max(st.w, opts.minStroke / s) }) : st); });
     return canvas;
   }
@@ -95,6 +125,7 @@ window.SurveyInk = (function () {
     var cur = null, pointers = new Map(), penActiveUntil = 0, pinch = null, panStart = null;
     var sel = null, drag = null;      // selected object id; drag = {mode:'move'|'resize', handle, start, orig}
     var selMark = null, markDef = null, mdrag = null;   // v0.4.0 marks: selected mark id · active palette def · {id,start,orig}
+    var labels = null;   // v0.5.1 {photoPageId: 'P3'} — painted beside the pins (SurveyInk.photoTags)
     var W = 0, H = 0;
 
     function resize() {
@@ -128,7 +159,7 @@ window.SurveyInk = (function () {
       bgx.save(); bgx.shadowColor = 'rgba(0,0,0,.45)'; bgx.shadowBlur = 18 / view.s; bgx.shadowOffsetY = 4 / view.s; bgx.fillStyle = '#ffffff'; bgx.fillRect(0, 0, sp.w, sp.h); bgx.restore();
       bgx.save(); bgx.beginPath(); bgx.rect(0, 0, sp.w, sp.h); bgx.clip();
       drawPaper(bgx, page, 1 / view.s); drawObjects(bgx, page);
-      if (SI) SI.drawMarks(bgx, page.marks);
+      if (SI) { SI.drawMarks(bgx, page.marks); drawTags(bgx, page.marks, labels); }
       bgx.restore();
     }
     function renderInk() { clear(inx); if (!page) return; applyView(inx); page.strokes.forEach(function (st) { drawStroke(inx, st); }); }
@@ -149,6 +180,14 @@ window.SurveyInk = (function () {
     function handles(o) { return [{ k: 'nw', x: o.x, y: o.y }, { k: 'ne', x: o.x + o.w, y: o.y }, { k: 'sw', x: o.x, y: o.y + o.h }, { k: 'se', x: o.x + o.w, y: o.y + o.h }]; }
     function objectAt(pt) { var os = page.objects || []; for (var i = os.length - 1; i >= 0; i--) { var o = os[i]; if (pt[0] >= o.x && pt[0] <= o.x + o.w && pt[1] >= o.y && pt[1] <= o.y + o.h) return o; } return null; }
     function handleAt(pt) { var o = selObj(); if (!o) return null; var r = 14 / view.s; return handles(o).find(function (h) { return Math.hypot(h.x - pt[0], h.y - pt[1]) <= r; }) || null; }
+    // v0.5.1 hit test: a photo pin is a lollipop — the tip (m.y) AND the camera body (m.y − 1.65r) both select it
+    function markHit(pt) {
+      if (!SI) return null; var r = SI.MARK_R, ms = page.marks || [];
+      for (var i = ms.length - 1; i >= 0; i--) { var m = ms[i], dy;
+        if (m.kind === 'photo') { var top = m.y - r * 1.9, bot = m.y + r * 0.3; dy = pt[1] < top ? top - pt[1] : pt[1] > bot ? pt[1] - bot : 0; if (Math.abs(m.x - pt[0]) <= r * 1.2 && dy <= r * 0.4) return m; }
+        else if (Math.hypot(m.x - pt[0], m.y - pt[1]) <= r * 1.3) return m; }
+      return null;
+    }
     function selMarkObj() { return selMark && page ? (page.marks || []).find(function (m) { return m.id === selMark; }) : null; }
     function addMark(def, pt) {
       page.marks = page.marks || [];
@@ -240,7 +279,7 @@ window.SurveyInk = (function () {
         addMark(markDef, mp); e.preventDefault(); return;
       }
       if (tool === 'select') {
-        var pt = toPage(e.clientX, e.clientY), hitMk = SI ? SI.markAt(page.marks, pt) : null;
+        var pt = toPage(e.clientX, e.clientY), hitMk = markHit(pt);
         if (hitMk) { selMark = hitMk.id; sel = null; mdrag = { id: e.pointerId, start: pt, orig: { x: hitMk.x, y: hitMk.y } }; renderLive(); e.preventDefault(); return; }
         selMark = null;
         var h = handleAt(pt), o = h ? selObj() : objectAt(pt);
@@ -279,7 +318,7 @@ window.SurveyInk = (function () {
     function hoverCursor(pt) {   // Mac: the cursor says what a click will do (resize corner · move · grab-to-pan)
       var h = handleAt(pt), c = 'default';
       if (h) c = (h.k === 'nw' || h.k === 'se') ? 'nwse-resize' : 'nesw-resize';
-      else if ((SI && SI.markAt(page.marks, pt)) || objectAt(pt)) c = 'move';
+      else if (markHit(pt) || objectAt(pt)) c = 'move';
       else c = 'grab';
       if (host.style.cursor !== c) host.style.cursor = c;
     }
@@ -340,6 +379,7 @@ window.SurveyInk = (function () {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
       getPage: function () { return page; },
       setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
+      setLabels: function (l) { labels = l || null; renderBg(); }, getLabels: function () { return labels; },
       clearSelection: function () { sel = null; selMark = null; drag = null; mdrag = null; renderLive(); },
       setMarkDef: function (d) { markDef = d; selMark = null; renderLive(); }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark, updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
       setColour: function (c) { colour = c; }, setWidth: function (w) { width = w; },
@@ -352,5 +392,5 @@ window.SurveyInk = (function () {
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.5.0' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, photoTags: photoTags, drawTags: drawTags, VERSION: '0.5.1' };
 })();

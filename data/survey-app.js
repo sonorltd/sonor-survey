@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.5.0 — report: photo tags P1…Pn on plan + pages, icon legend, pinned-photo thumbnails, device schedule by floor)
+/* Sonor Survey — APP (app-local, v0.5.1 — photo tags P1…Pn in-app (pins, thumbnails, pin chip) via SurveyInk.photoTags; Retake / Change photo from the page or its pin; devices legend on any page)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */
@@ -157,9 +157,38 @@
     if (row) { var pp = S.pages.find(function (x) { return x.id === planId; }); if (pp) { var m2 = (pp.ink.marks || []).find(function (m) { return m.id === markId; }); if (m2) { m2.photo_page_id = row.id; await window.SurveyStore.saveInk(S.pid, S.session.id, pp, []); var el = thumbEl(pp.id); if (el) thumbFor(pp, el); } } }
     return row;
   }
+  // ---------- photo tags (P1…Pn) — one numbering for app, thumbnails, PDF ----------
+  function tags() { return window.SurveyInk.photoTags(S.pages); }
+  function refreshTags() {
+    var t = tags(); S.tags = t;
+    if (ink && ink.setLabels) ink.setLabels(t.tag);
+    $$('#svPages .sv-thumb').forEach(function (el) { var p = S.pages.find(function (x) { return x.id === el.dataset.id; }); if (!p) return; var tg = $('.sv-thumb-tag', el); if (p.kind === 'photo' && t.tag[p.id]) { if (!tg) { tg = document.createElement('span'); tg.className = 'sv-thumb-tag'; $('.sv-thumb-img', el).appendChild(tg); } tg.textContent = t.tag[p.id]; } else if (tg) tg.remove(); });
+    if (S.page) renderPinChip();
+    return t;
+  }
+  // Replace a photo page's image (retake / change) — same page id, same pin, same tag; ink kept when the frame matches
+  async function replacePhoto(pageId, file) {
+    var p = S.pages.find(function (x) { return x.id === pageId; }); if (!p || !file) return;
+    var ph = await window.SurveyPlan.preparePhoto(file, CFG.spaces.photoMax, CFG.photoJpegQuality);
+    var same = p.ink && p.ink.space && p.ink.space.w === ph.w && p.ink.space.h === ph.h, hadInk = ((p.ink.strokes || []).length + (p.ink.objects || []).length) > 0;
+    if (!same && hadInk && !confirm('The new photo is a different shape — the markup on this photo will be cleared. Continue?')) return;
+    if (S.page === p) { S.noFlushOnce = true; }
+    delete S.bitmaps[p.id];
+    await window.SurveyStore.blobSet('photo:' + p.id, ph.blob);
+    var meta = Object.assign({}, p.metadata || {}, { w: ph.w, h: ph.h, bytes: ph.blob.size, replaced_at: new Date().toISOString() });
+    var ink2 = same ? p.ink : { v: 1, space: { w: ph.w, h: ph.h }, strokes: [], objects: [], marks: [] };
+    p.metadata = meta; p.ink = ink2;
+    await window.SurveyStore.updatePage(S.pid, S.session.id, p.id, { metadata: meta, ink: ink2 });
+    await window.SurveyStore.stashPhoto(S.pid, S.session.id, p.id, ph.blob);
+    var el = thumbEl(p.id); if (el) thumbFor(p, el);
+    if (S.page === p) await openPage(p.id);
+    var pb = (S.tags || tags()).pinnedBy[p.id]; if (pb) { var pp = S.pages.find(function (x) { return x.id === pb.pageId; }); var el2 = pp && thumbEl(pp.id); if (el2) thumbFor(pp, el2); }
+    toast('Photo replaced');
+  }
   function refreshMarkUi() {
     var mk = ink.selectedMark && ink.selectedMark();
     $('#svMarkPhoto').hidden = !mk; $('#svMarkOpen').hidden = !(mk && mk.photo_page_id);
+    if (mk) { var has = !!(mk.photo_page_id && S.pages.some(function (x) { return x.id === mk.photo_page_id; })); $('#svMarkPhoto .lbl').textContent = has ? 'Retake' : 'Photo here'; $('#svMarkPhoto').title = has ? 'Retake the photo pinned here (keeps the pin + tag)' : 'Take a photo pinned to the selected mark'; var tg = has && S.tags && S.tags.tag[mk.photo_page_id]; $('#svMarkOpen .lbl').textContent = tg ? 'Open ' + tg : 'Pinned photo'; }
     $('#svDelObj').hidden = !((ink.getTool() === 'select' || ink.getTool() === 'mark') && (ink.selected() || mk));
   }
   async function imageFor(key, path) {
@@ -171,7 +200,7 @@
   }
   // Everything the renderer needs for a page row: background image (plan / photo) + object bitmaps
   async function pageModel(p) {
-    var m = { space: p.ink.space, strokes: p.ink.strokes || [], objects: p.ink.objects || [], marks: p.ink.marks || [], images: {}, paper: p.kind, image: null, imageFit: null };
+    var m = { space: p.ink.space, strokes: p.ink.strokes || [], objects: p.ink.objects || [], marks: p.ink.marks || [], images: {}, paper: p.kind, image: null, imageFit: null, labels: (S.tags || tags()).tag };
     try {
       if (p.kind === 'plan' && p.plan_ref) {
         var key = 'plan:' + p.plan_ref.plan_id;
@@ -199,7 +228,7 @@
     var m = await pageModel(p);
     if (S.page !== p) return;
     if (!m.image && (p.kind === 'photo' || p.kind === 'plan')) toast('Could not load the ' + p.kind + ' image' + (navigator.onLine ? '' : ' (offline)'));
-    ink.setPage(m); updateUndo();
+    ink.setPage(m); updateUndo(); refreshTags();
   }
   function thumbEl(id) { return $$('#svPages .sv-thumb').find(function (e) { return e.dataset.id === id; }); }
   function renderStrip() {
@@ -211,6 +240,7 @@
       el.onclick = function () { openPage(p.id); };
       host.appendChild(el); thumbFor(p, el);
     });
+    refreshTags();
     var add = document.createElement('button'); add.type = 'button'; add.className = 'btn sv-thumb-add'; add.textContent = '＋ Page'; add.onclick = function (e) { openAddMenu(e.currentTarget); };
     host.appendChild(add);
   }
@@ -230,8 +260,19 @@
     (S.floors || []).forEach(function (f) { var o = document.createElement('option'); o.value = f.code; o.textContent = f.code + (f.name ? ' · ' + f.name : ''); fl.appendChild(o); });
     if (p.floor_code && !$$('option', fl).some(function (o) { return o.value === p.floor_code; })) { var o = document.createElement('option'); o.value = p.floor_code; o.textContent = p.floor_code; fl.appendChild(o); }
     fl.value = p.floor_code || ''; fl.disabled = p.kind === 'plan';
-    var pin = p.metadata && p.metadata.plan_pin; var pc = $('#svPinChip'); pc.hidden = !pin; if (pin) { pc.textContent = '📍 ' + (pin.floor_code || 'plan') + (pin.mark_code ? ' · ' + pin.mark_code.toUpperCase() : ''); pc.onclick = function () { if (pin.page_id) openPage(pin.page_id).then(function () { if (pin.mark_id) { setTool('select'); ink.selectMark(pin.mark_id); refreshMarkUi(); } }); }; }
+    renderPinChip();
+    var isPhoto = p.kind === 'photo'; $('#svPhotoRetake').hidden = !isPhoto; $('#svPhotoChange').hidden = !isPhoto;
     if (!S.floors && S.pid) window.SurveyPlan.listFloors(supa, S.pid).then(function (f) { S.floors = f; if (S.page === p) renderPageMeta(); });
+  }
+  function renderPinChip() {
+    var p = S.page, pc = $('#svPinChip'); if (!p) { pc.hidden = true; return; }
+    var t = S.tags || tags(), tg = p.kind === 'photo' ? t.tag[p.id] : null, pb = t.pinnedBy[p.id], pin = p.metadata && p.metadata.plan_pin;
+    pc.hidden = !(tg || pin);
+    if (pc.hidden) return;
+    var where = pb ? S.pages.find(function (x) { return x.id === pb.pageId; }) : null;
+    pc.textContent = (tg ? tg : '') + (pin || where ? (tg ? ' · ' : '') + '📍 ' + (where ? (where.title || where.floor_code || (where.kind === 'plan' ? 'Plan' : 'Notes')) : (pin.floor_code || 'plan')) + (pin && pin.mark_code && pin.mark_code !== 'photo' ? ' · ' + pin.mark_code.toUpperCase() : '') : '');
+    pc.title = pb ? 'Pinned on ' + (where ? (where.title || where.floor_code || 'page') : 'the plan') + ' — tap to jump to the pin' : 'Photo ' + tg;
+    pc.onclick = function () { var dest = (pb && pb.pageId) || (pin && pin.page_id), mid = (pb && pb.markId) || (pin && pin.mark_id); if (dest) openPage(dest).then(function () { if (mid) { setTool('select'); ink.selectMark(mid); refreshMarkUi(); } }); };
   }
   function savePageMeta() {
     if (!S.page) return;
@@ -244,6 +285,7 @@
     if (!S.page) return;
     var p = S.page, meta = Object.assign({}, p.metadata || {}, { hidden: true, hidden_at: new Date().toISOString() });
     await window.SurveyStore.updatePage(S.pid, S.session.id, p.id, { metadata: meta });
+    if (p.kind === 'photo') { S.pages.forEach(function (x) { var hit = ((x.ink && x.ink.marks) || []).filter(function (m) { return m.photo_page_id === p.id; }); if (hit.length) { hit.forEach(function (m) { delete m.photo_page_id; }); window.SurveyStore.saveInk(S.pid, S.session.id, x, []); } }); }
     S.pages = S.pages.filter(function (x) { return x.id !== p.id; }); S.page = null; renderStrip();
     if (S.pages.length) openPage(S.pages[0].id); else showEmpty();
     toast('Page removed');
@@ -374,8 +416,12 @@
     $$('#svAddMenu [data-add]').forEach(function (b) {
       b.onclick = function () { $('#svAddMenu').hidden = true; var k = b.dataset.add; if (k === 'plan') addPlanPage(); else if (k === 'checklist') addChecklistPage(); else if (k === 'photo') $('#svPhotoIn').click(); else if (k === 'photo-lib') $('#svPhotoLib').click(); else if (k === 'image') $('#svImageIn').click(); else addPage(k); };
     });
-    $('#svPhotoIn').onchange = function () { var f = this.files[0]; this.value = ''; var mid = S.pendingPhotoMark; S.pendingPhotoMark = null; if (mid) { if (f) photoAtMark(f, mid); else ink.removeMark(mid); } else addPhotoPage(f); };
-    $('#svMarkPhoto').onclick = function () { var mk = ink.selectedMark(); if (!mk) return; S.pendingPhotoMark = mk.id; $('#svPhotoIn').click(); };
+    function photoPicked(f) { var rid = S.pendingReplace; S.pendingReplace = null; var mid = S.pendingPhotoMark; S.pendingPhotoMark = null; if (rid) { if (f) replacePhoto(rid, f); } else if (mid) { if (f) photoAtMark(f, mid); else { var mk0 = (ink.getPage().marks || []).find(function (m) { return m.id === mid; }); if (mk0 && mk0.kind === 'photo' && !mk0.photo_page_id) ink.removeMark(mid); } } else addPhotoPage(f); }
+    $('#svPhotoIn').onchange = function () { var f = this.files[0]; this.value = ''; photoPicked(f); };
+    $('#svPhotoPick').onchange = function () { var f = this.files[0]; this.value = ''; photoPicked(f); };
+    $('#svMarkPhoto').onclick = function () { var mk = ink.selectedMark(); if (!mk) return; var has = mk.photo_page_id && S.pages.some(function (x) { return x.id === mk.photo_page_id; }); if (has) S.pendingReplace = mk.photo_page_id; else S.pendingPhotoMark = mk.id; $('#svPhotoIn').click(); };
+    $('#svPhotoRetake').onclick = function () { if (!S.page || S.page.kind !== 'photo') return; S.pendingReplace = S.page.id; $('#svPhotoIn').click(); };
+    $('#svPhotoChange').onclick = function () { if (!S.page || S.page.kind !== 'photo') return; S.pendingReplace = S.page.id; $('#svPhotoPick').click(); };
     $('#svMarkOpen').onclick = function () { var mk = ink.selectedMark(); if (mk && mk.photo_page_id) openPage(mk.photo_page_id); };
     $('#svPhotoLib').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await addPhotoPage(fs[i]); })(); };
     $('#svImageIn').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await insertImage(fs[i]); })(); };
@@ -411,6 +457,6 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function fmtDate(iso) { try { var d = new Date(iso); return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }); } catch (e) { return ''; } }
 
-  window.SurveyApp = { state: S, boot: boot, addPage: addPage, flushSave: flushSave, insertImage: insertImage, exportReport: exportReport, pageModel: pageModel, ink: function () { return ink; } };
+  window.SurveyApp = { state: S, boot: boot, addPage: addPage, flushSave: flushSave, insertImage: insertImage, exportReport: exportReport, pageModel: pageModel, replacePhoto: replacePhoto, tags: tags, openPage: openPage, ink: function () { return ink; } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
