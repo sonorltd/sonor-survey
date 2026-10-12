@@ -1,0 +1,16 @@
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+import { chromium } from 'playwright'; import fs from 'fs';
+const S = '/tmp/claude-0/-home-claude/bf21c3cb-6963-595d-a9f3-d79a6f8dc341/scratchpad';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const page = await (await browser.newContext({ viewport: { width: 1700, height: 1000 } })).newPage();
+page.on('console', m => { if (/survey-ink/.test(m.text())) console.log('console:', m.text().slice(0, 200)); });
+await page.route('https://sonorltd.github.io/sonor-takeoffs/sonor-takeoffs.html*', r => r.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(S + '/tk-patched.html', 'utf8') }));
+await page.route('https://sonorltd.github.io/sonor-takeoffs/data/sonor-takeoffs-survey.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(S + '/takeoffs/sonor-takeoffs-survey.js', 'utf8') }));
+await page.route('https://sonorltd.github.io/sonor-takeoffs/data/sonor-ink.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(S + '/root/sonor-ink.js', 'utf8') }));
+await page.goto('https://sonorltd.github.io/sonor-takeoffs/sonor-takeoffs.html', { waitUntil: 'load' }); await page.waitForTimeout(8000);
+await page.evaluate(async () => { await _switchToProject('ce20bee2-c58a-4df9-bf75-59bc5a588b04', null, {}); }); await page.waitForTimeout(5000);
+console.log(await page.evaluate(async () => { const db = (typeof supa !== 'undefined' && supa) || null; const r = db ? await db.from('survey_pages').select('id,floor_id,kind').eq('project_id', currentProjectId).eq('floor_id', activeFloorId).eq('kind', 'plan') : 'no supa'; return { supa: !!db, floor: activeFloorId, rows: r && r.data ? r.data.length : r, err: r && r.error && r.error.message }; }));
+await page.evaluate(() => { const cb = document.querySelector('[data-layer="surveyInk"]'); cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(3000);
+console.log('dbg', await page.evaluate(() => { const src = document.querySelector('script[src*="sonor-takeoffs-survey"]'); return { loaded: !!src, hasFn: typeof _initSurveyInkLayer, pidFn: (typeof currentProjectId), lay: !!window.SonorSurveyInkLayer }; }));
+console.log('pages', await page.evaluate(async () => { try { await SonorSurveyInkLayer.reload(); return SonorSurveyInkLayer.pages().length; } catch (e) { return 'ERR ' + e.message + ' ' + e.stack.slice(0, 300); } }));
+await browser.close();

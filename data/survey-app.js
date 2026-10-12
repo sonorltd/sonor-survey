@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.4.3 — Select tool fixed (mark drag released on pointer-up), hover cursors, Esc clears selection; report img regression fixed)
+/* Sonor Survey — APP (app-local, v0.5.0 — report: photo tags P1…Pn on plan + pages, icon legend, pinned-photo thumbnails, device schedule by floor)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */

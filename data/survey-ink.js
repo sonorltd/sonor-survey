@@ -352,5 +352,5 @@ window.SurveyInk = (function () {
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.4.3' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.5.0' };
 })();

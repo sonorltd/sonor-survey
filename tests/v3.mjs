@@ -1,0 +1,10 @@
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const page = await (await browser.newContext({ viewport: { width: 1500, height: 900 } })).newPage();
+await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'networkidle' }); await page.waitForTimeout(3000);
+console.log(await page.evaluate(() => ({ badge: document.getElementById('nav-version') && document.getElementById('nav-version').textContent, thumbs: Array.from(document.querySelectorAll('.sv-thumb-lbl')).map(e => e.textContent.trim()).slice(0, 4) })));
+await page.fill('#svTitle', 'Cinema rear wall'); await page.locator('#svTitle').blur(); await page.waitForTimeout(600);
+console.log(await page.evaluate(() => Array.from(document.querySelectorAll('.sv-thumb-lbl')).map(e => e.textContent.trim()).slice(0, 2)));
+await page.screenshot({ path: 'shot-v3.png', clip: { x: 0, y: 0, width: 1500, height: 260 } });
+await browser.close();

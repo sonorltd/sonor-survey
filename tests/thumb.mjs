@@ -1,0 +1,15 @@
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+import { chromium, devices } from 'playwright';
+const TEST = 'ce20bee2-c58a-4df9-bf75-59bc5a588b04';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const ctx = await browser.newContext({ ...devices['iPad Pro 11 landscape'], hasTouch: true }); const page = await ctx.newPage();
+page.on('pageerror', e => console.log('PAGEERROR', e.message));
+await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=' + TEST, { waitUntil: 'networkidle' }); await page.waitForTimeout(2500);
+await page.click('#svNew'); await page.waitForTimeout(2500);
+await page.evaluate(() => { const host = document.querySelector('#svCanvas'); const r = host.getBoundingClientRect();
+  const ev = (type, x, y, p) => host.dispatchEvent(new PointerEvent(type, { pointerId: 9, pointerType: 'pen', clientX: r.left + x, clientY: r.top + y, pressure: p, bubbles: true, buttons: 1 }));
+  const cx = r.width / 2 - 100, cy = r.height / 2 - 80; ev('pointerdown', cx, cy, .5); for (let i = 0; i < 30; i++) ev('pointermove', cx + i * 7, cy + i * 5, .5); ev('pointerup', cx + 210, cy + 150, 0); });
+await page.click('#svAdd'); await page.click('[data-add="lined"]'); await page.waitForTimeout(1500);
+console.log(await page.evaluate(() => { const img = document.querySelector('#svPages .sv-thumb img'); const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; const x = c.getContext('2d'); x.drawImage(img, 0, 0); const d = x.getImageData(0, 0, c.width, c.height).data; let dark = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 128) dark++; return { thumbDarkPx: dark, strokesP1: SurveyApp.state.pages[0].ink.strokes.length, emptyVisible: getComputedStyle(document.querySelector('#svEmpty')).display }; }));
+await page.screenshot({ path: 'shot2.png' });
+await browser.close();
