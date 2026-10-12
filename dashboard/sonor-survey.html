@@ -196,8 +196,9 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.2.0';
-  SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey' });
+  const APP_VERSION = '0.2.1';
+  window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
+  SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>
 <script src="../data/survey-app.js"></script>
 </body>

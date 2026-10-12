@@ -1,6 +1,6 @@
-# Survey — Claude Code Context (v0.2.0)
+# Survey — Claude Code Context (v0.2.1)
 
-> **Current version: 0.2.0** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
+> **Current version: 0.2.1** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
 > Inherits: `../CLAUDE.md` (master rules) · Brand source: `../Branding - CORE/brand-core.xml`
 > Born 2026-10-12 via `register-app.sh` (Bryn: "a survey app, essentially a notepad like Notability … Apple Pencil … markup plans during client meetings and site survey … link end to end for the project, with survey photos and plan markups, plus notes" — "a bit like Takeoffs in principle but a bit more basic").
 
@@ -56,6 +56,7 @@ None.
 5. Publish via the merge RPC only (never `UPDATE projects SET metadata`).
 
 ## Feature timeline
+- **v0.2.1 (2026-10-12)** — header version badge (window.APP_VERSION + appVersion), thumbnail label = title (kind only when untitled); project-bar 1.11.1 / wq-bar 1.4.6 neutral pills via sync; PM brief.html v1.5.0 "Site surveys" card reads survey_sessions / survey_pages live.
 - **v0.2.0 (2026-10-12)** — bg clip bug fixed (page 'scrolling around' / striped paper on Mac); landscape notes default; drop / paste / insert images as movable objects; checklist pages from `survey_templates` (12 templates); luxury PDF report (📄 Report). Headless-verified: pan sanity, object move / resize / delete / undo / cloud round-trip, checklist tick + value, 4-page report rasterised.
 - **v0.1.0 (2026-10-12)** — born: sessions, five page kinds, Pencil ink engine, Takeoffs plan pages, photo pages → site-photos, IndexedDB outbox + CAS/merge sync, PWA shell, survey_summary publish. Smoke-tested headless (iPad Pro 11 profile) against SON-2026-BGTRL (is_test).
 
