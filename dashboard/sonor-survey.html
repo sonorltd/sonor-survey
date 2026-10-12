@@ -92,7 +92,8 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 .sv-palette { position: absolute; left: 10px; right: 10px; top: 46px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.35); overflow-x: auto; }
 .sv-palette[hidden] { display: none; }
 .sv-marks { display: flex; gap: 6px; flex-wrap: nowrap; }
-.sv-mark-chip { min-height: 32px; padding: 3px 9px 3px 5px; font-size: 12px; }
+.sv-mark-chip { min-height: 32px; padding: 3px 9px 3px 5px; font-size: 12px; white-space: nowrap; }
+.sv-mark-gap { width: 1px; align-self: stretch; background: var(--border); margin: 0 3px; flex: none; }
 .sv-mark-chip.active { border-color: var(--mk); box-shadow: 0 0 0 1px var(--mk); }
 .sv-mark-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 50%; background: var(--mk); color: #fff; font-size: 9px; font-weight: 700; margin-right: 6px; padding: 0 4px; }
 .sv-stage.sv-drop .sv-canvas, .sv-stage.sv-drop #svCheck { outline: 2px dashed var(--accent); outline-offset: -6px; }
@@ -146,7 +147,8 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
   <button class="btn active" type="button" data-tool="pen" title="Pen (P)">✏️ <span class="lbl">Pen</span></button>
   <button class="btn" type="button" data-tool="hl" title="Highlighter (H)">🖍 <span class="lbl">Highlight</span></button>
   <button class="btn" type="button" data-tool="eraser" title="Eraser (E) — removes whole strokes">⌫ <span class="lbl">Eraser</span></button>
-  <button class="btn" type="button" data-tool="mark" title="Survey marks — TV / speaker / keypad / photo here… (M)">📍 <span class="lbl">Mark</span></button>
+  <button class="btn" type="button" data-tool="mark" title="Devices — TV / speaker / keypad… tap a type, tap the plan (M)">📍 <span class="lbl">Devices</span></button>
+  <button class="btn" type="button" data-tool="photopin" title="Pin a photo — tap the plan where you're standing, then take the photo (C)">📷 <span class="lbl">Pin photo</span></button>
   <button class="btn" type="button" data-tool="select" title="Select / move / resize images and marks (V)">⬚ <span class="lbl">Select</span></button>
   <button class="btn" type="button" data-tool="pan" title="Pan (hold Space)">✋ <span class="lbl">Pan</span></button>
   <button class="btn" id="svDelObj" type="button" hidden title="Remove the selected image / mark (⌫)">🗑</button>
@@ -175,7 +177,7 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
       <button class="btn btn-sm" id="svHistory" type="button" title="Every earlier version of this page (audit trail)">⟲ History</button>
       <button class="btn btn-sm" id="svRemove" type="button">Remove page</button>
     </div>
-    <div class="sv-palette" id="svPalette" hidden><span class="muted tiny">Tap a type, then tap the plan</span><div class="sv-marks" id="svMarks"></div></div>
+    <div class="sv-palette" id="svPalette" hidden><div class="sv-marks" id="svMarks"></div></div>
     <div class="sv-canvas" id="svCanvas" hidden data-tool="pen"></div>
     <div id="svCheck" hidden></div>
     <div class="sv-empty" id="svEmpty">
@@ -210,7 +212,7 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.4.0';
+  const APP_VERSION = '0.4.2';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>

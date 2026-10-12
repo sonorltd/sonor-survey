@@ -77,6 +77,8 @@ window.SurveyInk = (function () {
     var x = canvas.getContext('2d');
     x.setTransform(s, 0, 0, s, 0, 0);
     drawPaper(x, page, 1 / s); drawObjects(x, page);
+    // v0.4.2 — device/photo marks render in exports and thumbnails exactly as on the live bg layer (under the ink).
+    if (SI && page.marks && page.marks.length) SI.drawMarks(x, page.marks, { r: Math.max(SI.MARK_R, (opts.minMark || 0) / s) });
     (page.strokes || []).forEach(function (st) { drawStroke(x, opts.minStroke ? Object.assign({}, st, { w: Math.max(st.w, opts.minStroke / s) }) : st); });
     return canvas;
   }
@@ -231,9 +233,8 @@ window.SurveyInk = (function () {
           panStart = null; return;
         }
       }
-      if (tool === 'mark') {
-        var mp = toPage(e.clientX, e.clientY), hitM = SI ? SI.markAt(page.marks, mp) : null;
-        if (hitM) { selMark = hitM.id; mdrag = { id: e.pointerId, start: mp, orig: { x: hitM.x, y: hitM.y } }; renderLive(); e.preventDefault(); return; }
+      if (tool === 'mark') {   // v0.4.1: a tap ALWAYS places (grabbing a nearby mark made it "stuck" on the iPad); Select moves marks
+        var mp = toPage(e.clientX, e.clientY);
         if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
         if (mp[0] < 0 || mp[1] < 0 || mp[0] > page.space.w || mp[1] > page.space.h) return;
         addMark(markDef, mp); e.preventDefault(); return;
@@ -323,16 +324,16 @@ window.SurveyInk = (function () {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
       getPage: function () { return page; },
       setTool: function (t) { tool = t; host.dataset.tool = t; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
-      setMarkDef: function (d) { markDef = d; }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark, updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
+      setMarkDef: function (d) { markDef = d; selMark = null; renderLive(); }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark, updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
       setColour: function (c) { colour = c; }, setWidth: function (w) { width = w; },
       fingerDraws: function (b) { fingerDraw = !!b; },
       undo: doUndo, redo: doRedo, canUndo: function () { return undo.length > 0; }, canRedo: function () { return redo.length > 0; },
       fit: fit, render: render, zoomAt: zoomAt, viewCentrePage: viewCentrePage,
       addObject: addObject, removeSelected: removeSelected, selected: selObj, removeMark: removeMark, select: function (id) { sel = id; renderLive(); },
-      thumbnail: function (tw) { return page ? renderPage(page, null, tw, { minStroke: 2.5 }).toDataURL('image/png') : null; },
+      thumbnail: function (tw) { return page ? renderPage(page, null, tw, { minStroke: 2.5, minMark: 9 }).toDataURL('image/png') : null; },
       drawStrokeTo: drawStroke,
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.4.0' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.4.2' };
 })();

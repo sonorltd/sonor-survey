@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.4.0 — survey marks palette + photo pins in the shared plan_pin record)
+/* Sonor Survey — APP (app-local, v0.4.2 — PDF report + thumbnails render device/photo marks exactly as in-app, device legend under plan pages)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */
@@ -313,7 +313,7 @@
   }
 
   // ---------- toolbar ----------
-  function svcColour(nn) { var c = CFG.inks.find(function (i) { return i.n.indexOf(nn) === 0; }); return c ? c.c : '#98989D'; }
+  function svcColour(nn) { var c = CFG.inks.find(function (i) { return i.n.indexOf(nn) === 0; }); return c ? c.c : ((CFG.extraColours || {})[nn] || '#98989D'); }
   function buildToolbar() {
     var sw = $('#svColours'); CFG.inks.forEach(function (c, i) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'sv-swatch' + (i === 0 ? ' active' : ''); b.style.setProperty('--c', c.c); b.title = c.n; b.dataset.c = c.c;
@@ -321,17 +321,23 @@
       sw.appendChild(b);
     });
     var ws = $('#svWidths'); CFG.widths.forEach(function (w, i) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-w' + (i === 1 ? ' active' : ''); b.textContent = w.k; b.title = 'Width ' + w.w; b.onclick = function () { ink.setWidth(w.w); $$('.sv-w').forEach(function (x) { x.classList.toggle('active', x === b); }); }; ws.appendChild(b); });
-    var pal = $('#svMarks'); CFG.marks.forEach(function (d) {
+    var pal = $('#svMarks'), lastNn = null; CFG.marks.forEach(function (d) {
+      if (lastNn !== null && d.nn !== lastNn) { var gap = document.createElement('span'); gap.className = 'sv-mark-gap'; pal.appendChild(gap); } lastNn = d.nn;
       var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-mark-chip'; b.dataset.code = d.code;
       var col = d.nn ? svcColour(d.nn) : '#1C1C1E'; b.style.setProperty('--mk', col); b.innerHTML = '<span class="sv-mark-dot">' + esc(d.glyph) + '</span>' + esc(d.label);
-      b.onclick = function () { var def = Object.assign({}, d, { c: col }); ink.setMarkDef(def); $$('.sv-mark-chip').forEach(function (x) { x.classList.toggle('active', x === b); }); if (ink.getTool() !== 'mark') setTool('mark'); };
+      b.onclick = function () { var def = Object.assign({}, d, { c: col }); $$('.sv-mark-chip').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('mark'); };
       pal.appendChild(b);
     });
     var ks = $('#svKind'); CFG.sessionKinds.forEach(function (k) { var o = document.createElement('option'); o.value = k[0]; o.textContent = k[1]; ks.appendChild(o); });
     $('#svPortrait').classList.toggle('active', S.portrait);
   }
   function setToolBtn(t) { $$('[data-tool]').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); $('#svPalette').hidden = t !== 'mark'; refreshMarkUi(); }
-  function setTool(t) { ink.setTool(t); setToolBtn(t); }
+  function curTool() { var b = $('[data-tool].active'); return b ? b.dataset.tool : ink.getTool(); }
+  function setTool(t) {
+    if (t === 'photopin') { ink.setMarkDef(Object.assign({}, CFG.photoMark, { c: '#1C1C1E' })); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('photopin'); $('#svPalette').hidden = true; return; }
+    if (t === 'mark') { var act = $('.sv-mark-chip.active'); if (!act) { var first = $('.sv-mark-chip'); if (first) first.click(); return; } var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
+    ink.setTool(t); setToolBtn(t);
+  }
   function updateUndo() { $('#svUndo').disabled = !ink.canUndo(); $('#svRedo').disabled = !ink.canRedo(); }
   function openAddMenu(anchor) {
     var m = $('#svAddMenu'); m.hidden = !m.hidden; if (m.hidden) return;
@@ -384,7 +390,7 @@
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? ink.redo() : ink.undo(); }
       else if (e.key === 'p') setTool('pen'); else if (e.key === 'h') setTool('hl'); else if (e.key === 'e') setTool('eraser'); else if (e.key === 'v') setTool('select'); else if (e.key === ' ') { setTool('pan'); }
       else if (e.key === 'f') ink.fit();
-      else if (e.key === 'm') setTool('mark');
+      else if (e.key === 'm') setTool('mark'); else if (e.key === 'c') setTool('photopin');
       else if ((e.key === 'Backspace' || e.key === 'Delete') && /select|mark/.test(ink.getTool()) && (ink.selected() || ink.selectedMark())) { e.preventDefault(); ink.removeSelected(); refreshMarkUi(); }
     });
     document.addEventListener('keyup', function (e) { if (e.key === ' ' && ink.getTool() === 'pan') setTool('pen'); });
