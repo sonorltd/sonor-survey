@@ -90,11 +90,9 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 #svToast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 400; background: var(--card); color: var(--text-primary); border: 1px solid var(--border-strong, var(--border)); border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 #svToast[hidden] { display: none; }
 .sv-sync { white-space: nowrap; }
-.sv-palette { position: absolute; left: 10px; right: 10px; top: 46px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.35); overflow-x: auto; }
+.sv-palette { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.35); overflow-x: auto; }
 .sv-palette[hidden] { display: none; }
 .sv-marks { display: flex; gap: 6px; flex-wrap: nowrap; }
-.sv-pins-wrap { position: relative; display: inline-block; }
-.sv-pins-menu { position: fixed; z-index: 30; min-width: 280px; padding: 6px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 10px 28px rgba(0,0,0,.4); display: flex; flex-direction: column; gap: 2px; }
 .sv-pin-item { display: flex; align-items: center; gap: 10px; justify-content: flex-start; text-align: left; padding: 6px 8px; min-height: 40px; }
 .sv-pin-item small { display: block; font-size: 10.5px; color: var(--text-secondary, #9a9a9a); font-weight: 400; }
 .sv-pin-dot { border-radius: 4px; transform: rotate(45deg); } .sv-pin-dot { transform: none; border-radius: 5px; }
@@ -129,6 +127,58 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 .sv-sheet-add { display: flex; gap: 8px; margin-top: 14px; } .sv-sheet-add .btn { color: #1a1814; background: #fff; border-color: #cdd3dd; }
 .sv-svc-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--svc, var(--text-muted)); margin-right: 6px; }
 #svPortrait { justify-content: center; border-top: 1px solid var(--border); margin-top: 4px; }
+/* ═══ v0.7.0 FIELD CHROME ═══ */
+.sv-bar .btn, .sv-bar select { min-height: 40px; }                       /* field: 40 px touch targets */
+.sv-bar-top { background: var(--bg-1, var(--body)); }
+.sv-bar-tools { padding-top: 5px; padding-bottom: 5px; }
+.sv-find { max-width: 260px; } .sv-find .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; display: inline-block; vertical-align: middle; }
+.sv-where { font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+.sv-where b { color: var(--text-primary); font-weight: 600; }
+.sv-where .sep { opacity: .5; margin: 0 5px; }
+.sv-sync { min-width: 150px; justify-content: flex-start; font-size: 12.5px; }
+.sv-sync[data-tone="ok"] { border-color: color-mix(in srgb, #78ba57 55%, var(--border)); } .sv-sync[data-tone="ok"]::before { content: '●'; color: #78ba57; margin-right: 6px; }
+.sv-sync[data-tone="info"]::before { content: '◐'; color: #f5b041; margin-right: 6px; }
+.sv-sync[data-tone="warn"]::before { content: '●'; color: #f5b041; margin-right: 6px; }
+.sv-sync[data-tone="busy"]::before { content: '◌'; margin-right: 6px; animation: svspin 1s linear infinite; display: inline-block; }
+@keyframes svspin { to { transform: rotate(360deg); } }
+.sv-menu-wrap { position: relative; display: inline-block; flex: none; }
+.sv-menu { position: fixed; z-index: 250; min-width: 240px; padding: 6px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 2px; }
+.sv-menu[hidden] { display: none; }
+.sv-menu .btn { justify-content: flex-start; text-align: left; min-height: 42px; padding: 8px 10px; font-size: 13.5px; }
+.sv-menu .btn kbd { margin-left: auto; font: 11px 'DM Mono', monospace; color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.sv-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+.sv-menu-head { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); padding: 6px 10px 2px; }
+.sv-menu-row { display: flex; align-items: center; gap: 10px; padding: 4px 10px; font-size: 13px; } .sv-menu-row select { flex: 1 1 auto; min-height: 36px; font: inherit; color: var(--text-primary); background: var(--body); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; color-scheme: dark; }
+.sv-tool-now { font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); white-space: nowrap; }
+.sv-ctx-inks { display: flex; align-items: center; gap: 10px; }
+.sv-ctx-inks[hidden], .sv-marks[hidden] { display: none; }
+.sv-swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--border); background: var(--c); cursor: pointer; padding: 0; flex: none; color: #fff; font: 700 10px/1 'DM Mono', monospace; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.sv-swatch[data-nn="04"], .sv-swatch[data-nn="09"], .sv-swatch[data-nn="08"] { color: #1a1814; text-shadow: none; }
+.sv-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+.sv-ink-name { font-size: 12.5px; color: var(--text-primary); white-space: nowrap; min-width: 92px; }
+.sv-w { min-width: 38px; min-height: 36px; }
+.sv-pin-item { min-height: 42px; }
+/* finder */
+.sv-finder input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; min-height: 44px; color: var(--text-primary); background: var(--body); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color-scheme: dark; }
+.sv-finder-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; max-height: 52vh; overflow: auto; }
+.sv-finder-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 48px; padding: 8px 10px; text-align: left; }
+.sv-finder-row .ref { font: 12px 'DM Mono', monospace; color: var(--text-muted); } .sv-finder-row .nm { font-weight: 600; font-size: 14px; } .sv-finder-row .ad { font-size: 12px; color: var(--text-secondary, var(--text-muted)); }
+.sv-finder-row.cur { border-color: var(--accent); }
+.sv-finder-opts { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); } .sv-finder-opts label { display: flex; align-items: center; gap: 6px; }
+.sv-finder-h { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 10px 2px 4px; }
+/* finish + saving sheets */
+.sv-steps { display: flex; flex-direction: column; gap: 10px; }
+.sv-step { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.sv-step h4 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; } .sv-step h4 .n { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; font-size: 12px; background: var(--border); } .sv-step.done h4 .n { background: #78ba57; color: #fff; }
+.sv-step ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; } .sv-step .warn { color: #f5b041; }
+.sv-step .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.sv-q { display: flex; flex-direction: column; gap: 6px; } .sv-q-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border); } .sv-q-row .op { font: 12px 'DM Mono', monospace; min-width: 110px; } .sv-q-row .when { color: var(--text-muted); margin-left: auto; font-size: 12px; }
+/* focus mode */
+body.sv-focus #sonor-header, body.sv-focus #projectBarHost, body.sv-focus .sv-bar-top, body.sv-focus .sv-pages, body.sv-focus .sv-meta { display: none !important; }
+body.sv-focus .sv-bar-tools { border-top: 1px solid var(--border); }
+.sv-focus-chip { position: absolute; left: 10px; bottom: 10px; z-index: 6; display: none; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); font-size: 12.5px; }
+body.sv-focus .sv-focus-chip { display: flex; }
+.sv-focus-chip .btn { min-height: 32px; }
 @media (max-width: 760px) { .sv-pages { width: 96px; } #svSession { max-width: 170px; } .sv-bar .btn span.lbl { display: none; } }
 </style>
 </head>
@@ -137,47 +187,62 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 <script>SonorHeader.init({ appName: 'Survey', repo: 'sonor-survey', faviconHref: '../data/favicon.svg' });</script>
 <div id="projectBarHost"></div>
 
-<div class="sv-bar" data-bar>
+<!-- v0.7.0 FIELD CHROME — one survey bar (project · survey · where · finish · save state) + one tool bar (the five that matter, the rest in More ▾).
+     Colours / widths / device chips live in the CONTEXT STRIP over the page and appear only for the tool that uses them. -->
+<div class="sv-bar sv-bar-top" data-bar>
+  <button class="btn sv-find" id="svFind" type="button" title="Find a project — by number, name or address (⌘K)">🔎 <span class="lbl" id="svFindLbl">Project</span></button>
   <select id="svSession" aria-label="Survey session"></select>
-  <select id="svKind" aria-label="Kind"></select>
-  <button class="btn" id="svNew" type="button">＋ New survey</button>
-  <button class="btn" id="svClose" type="button">Close survey</button>
-  <span class="sv-sep"></span>
-  <button class="btn" id="svEngineer" type="button" title="Who is surveying">👤 <span class="lbl">Engineer</span></button>
-  <button class="btn" id="svPublish" type="button" title="Publish the survey summary + photos to the project (Brief page)">⬆ <span class="lbl">Publish</span></button>
-  <button class="btn" id="svReport" type="button" title="Survey / meeting report PDF (Sonor luxury chrome)">📄 <span class="lbl">Report</span></button>
+  <span class="sv-menu-wrap"><button class="btn" id="svSurveyBtn" type="button" title="Survey actions">☰ <span class="lbl">Survey</span> ▾</button>
+    <div class="sv-menu" id="svSurveyMenu" hidden>
+      <button class="btn" id="svNew" type="button">＋ New survey</button>
+      <label class="sv-menu-row">Kind <select id="svKind" aria-label="Kind"></select></label>
+      <button class="btn" id="svEngineer" type="button">👤 Engineer…</button>
+      <span class="sv-menu-sep"></span>
+      <button class="btn" id="svClose" type="button">✓ Complete survey</button>
+      <button class="btn" id="svPublish" type="button">⬆ Publish to project</button>
+      <button class="btn" id="svReport" type="button">📄 Report PDF</button>
+    </div></span>
   <span class="sv-grow"></span>
-  <span class="s-pill s-pill-status sv-sync" id="svSync" data-tone="dim">…</span>
+  <span class="sv-where" id="svWhere" title="Where you are recording"></span>
+  <button class="btn" id="svFocus" type="button" title="Focus — hide everything but the page and tools (⌥F)">⛶ <span class="lbl">Focus</span></button>
+  <button class="btn btn-primary" id="svFinish" type="button" title="Review → Complete → Publish">Finish ▾</button>
+  <button class="btn sv-sync" id="svSync" type="button" data-tone="dim" title="Saving state — tap to inspect pending uploads">…</button>
 </div>
 
-<div class="sv-bar" data-bar>
-  <button class="btn" id="svAdd" type="button">＋ <span class="lbl">Page</span></button>
+<div class="sv-bar sv-bar-tools" data-bar>
+  <button class="btn" id="svAdd" type="button" title="Add a page">＋ <span class="lbl">Page</span></button>
   <span class="sv-sep"></span>
   <button class="btn active" type="button" data-tool="pen" title="Pen (P)">✏️ <span class="lbl">Pen</span></button>
-  <button class="btn" type="button" data-tool="hl" title="Highlighter (H)">🖍 <span class="lbl">Highlight</span></button>
-  <button class="btn" type="button" data-tool="eraser" title="Eraser (E) — removes whole strokes">⌫ <span class="lbl">Eraser</span></button>
-  <button class="btn" type="button" data-tool="mark" title="Devices — TV / speaker / keypad… tap a type, tap the plan (M)">📍 <span class="lbl">Devices</span></button>
-  <button class="btn" type="button" data-tool="photopin" title="Pin a photo — tap the plan where you're standing, then take the photo (C)">📷 <span class="lbl">Pin photo</span></button>
-  <span class="sv-pins-wrap"><button class="btn" type="button" data-tool="pins" id="svPinsBtn" title="Pins — RFI / client comment / site note / snag / measurement; they pull through to Takeoffs Plan Notes">📌 <span class="lbl">Pins</span> ▾</button>
-    <div class="sv-pins-menu" id="svPinsMenu" hidden></div></span>
-  <button class="btn" type="button" data-tool="text" title="Text — tap the page and type (T)">T <span class="lbl">Text</span></button>
-  <button class="btn" type="button" data-tool="select" title="Select / move / resize images and marks (V)">⬚ <span class="lbl">Select</span></button>
-  <button class="btn" type="button" data-tool="pan" title="Pan (hold Space)">✋ <span class="lbl">Pan</span></button>
+  <button class="btn" type="button" data-tool="mark" title="Devices — tap a type, tap the plan (M)">📍 <span class="lbl">Devices</span></button>
+  <button class="btn" type="button" data-tool="photopin" title="Photo — tap where you're standing, then take the photo (C)">📷 <span class="lbl">Photo</span></button>
+  <button class="btn" type="button" data-tool="select" title="Select / move / resize (V)">⬚ <span class="lbl">Select</span></button>
+  <span class="sv-sep"></span>
+  <button class="btn" id="svUndo" type="button" title="Undo (⌘Z)">↶</button>
+  <button class="btn" id="svRedo" type="button" title="Redo (⇧⌘Z)">↷</button>
+  <span class="sv-sep"></span>
+  <span class="sv-ctx-actions">
   <button class="btn" id="svDelObj" type="button" hidden title="Remove the selected image / mark (⌫)">🗑</button>
   <button class="btn" id="svMarkPhoto" type="button" hidden title="Take a photo pinned to the selected mark">📷 <span class="lbl">Photo here</span></button>
   <button class="btn" id="svMarkOpen" type="button" hidden title="Open the photo pinned to this mark">🖼 <span class="lbl">Pinned photo</span></button>
   <button class="btn" id="svPinEdit" type="button" hidden title="Edit this pin's text">✎ <span class="lbl">Edit pin</span></button>
   <button class="btn" id="svTextEdit" type="button" hidden title="Edit this text">✎ <span class="lbl">Edit text</span></button>
-  <span class="sv-sep"></span>
-  <div class="sv-swatches" id="svColours"></div>
-  <span class="sv-sep"></span>
-  <div class="sv-swatches" id="svWidths"></div>
-  <span class="sv-sep"></span>
-  <button class="btn" id="svUndo" type="button" title="Undo (⌘Z)">↶</button>
-  <button class="btn" id="svRedo" type="button" title="Redo (⇧⌘Z)">↷</button>
-  <button class="btn" id="svFit" type="button" title="Fit page (F)">⤢</button>
+  </span>
+  <span class="sv-tool-now" id="svToolNow"></span>
   <span class="sv-grow"></span>
-  <button class="btn" id="svFinger" type="button" aria-pressed="false" title="Draw with a finger too (default: Pencil draws, fingers pan / pinch)">☝ <span class="lbl">Finger</span></button>
+  <span class="sv-menu-wrap"><button class="btn" id="svMoreBtn" type="button" title="More tools">⋯ <span class="lbl">More</span> ▾</button>
+    <div class="sv-menu sv-menu-more" id="svMoreMenu" hidden>
+      <button class="btn" type="button" data-tool="hl">🖍 Highlighter <kbd>H</kbd></button>
+      <button class="btn" type="button" data-tool="eraser">⌫ Eraser <kbd>E</kbd></button>
+      <button class="btn" type="button" data-tool="text">T Text <kbd>T</kbd></button>
+      <button class="btn" type="button" data-tool="pan">✋ Pan <kbd>Space</kbd></button>
+      <span class="sv-menu-sep"></span>
+      <div class="sv-menu-head">📌 Pins — pull through to Takeoffs</div>
+      <div id="svPinsMenu"></div>
+      <span class="sv-menu-sep"></span>
+      <button class="btn" id="svFit" type="button">⤢ Fit page <kbd>F</kbd></button>
+      <button class="btn" id="svFinger" type="button" aria-pressed="false">☝ Finger draws too</button>
+      <button class="btn" type="button" id="svPortrait">▭ Landscape pages</button>
+    </div></span>
 </div>
 
 <div class="sv-body">
@@ -188,13 +253,21 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
       <select id="svFloor" aria-label="Floor"><option value="">Floor</option></select>
       <input id="svRoom" placeholder="Room" aria-label="Room">
       <button class="btn btn-sm" id="svPinChip" type="button" hidden title="Pinned on the plan — tap to jump there"></button>
-      <button class="btn btn-sm" id="svPhotoRetake" type="button" hidden title="Retake this photo with the camera — keeps the pin, the tag and (same frame) the markup">📷 Retake</button>
-      <button class="btn btn-sm" id="svPhotoChange" type="button" hidden title="Swap this photo for one from the library — keeps the pin and the tag">🖼 Change</button>
-      <button class="btn btn-sm" id="svHistory" type="button" title="Every earlier version of this page (audit trail)">⟲ History</button>
-      <button class="btn btn-sm" id="svRemove" type="button">Remove page</button>
+      <span class="sv-grow"></span>
+      <span class="sv-menu-wrap"><button class="btn btn-sm" id="svPageBtn" type="button" title="Page actions">⋯</button>
+        <div class="sv-menu" id="svPageMenu" hidden>
+          <button class="btn" id="svPhotoRetake" type="button" hidden>📷 Retake photo</button>
+          <button class="btn" id="svPhotoChange" type="button" hidden>🖼 Change photo</button>
+          <button class="btn" id="svHistory" type="button">⟲ Page history</button>
+          <button class="btn" id="svRemove" type="button">🗑 Remove page</button>
+        </div></span>
     </div>
-    <div class="sv-palette" id="svPalette" hidden><div class="sv-marks" id="svMarks"></div></div>
+    <div class="sv-palette" id="svPalette" hidden>
+      <div class="sv-ctx-inks" id="svCtxInks"><div class="sv-swatches" id="svColours"></div><span class="sv-ink-name" id="svInkName"></span><span class="sv-mark-gap"></span><div class="sv-swatches" id="svWidths"></div></div>
+      <div class="sv-marks" id="svMarks" hidden></div>
+    </div>
     <div class="sv-canvas" id="svCanvas" hidden data-tool="pen"></div>
+    <div class="sv-focus-chip" id="svFocusChip"><span id="svFocusWhere"></span><button class="btn btn-sm" id="svFocusExit" type="button">Exit focus</button></div>
     <div id="svCheck" hidden></div>
     <div class="sv-empty" id="svEmpty">
       <h2>Survey</h2>
@@ -229,10 +302,11 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.6.0';
+  const APP_VERSION = '0.7.0';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>
 <script src="../data/survey-app.js"></script>
+<script src="../data/survey-field.js"></script>   <!-- v0.7.0 field chrome: project finder · saving state · finish flow · focus mode · menus -->
 </body>
 </html>

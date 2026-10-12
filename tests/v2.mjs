@@ -5,7 +5,7 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } }); const page = await ctx.newPage();
 const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/GoTrue/.test(m.text())) errs.push('console: ' + m.text().slice(0, 200)); });
 await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=' + TEST, { waitUntil: 'networkidle' }); await page.waitForTimeout(2500);
-await page.click('#svNew'); await page.waitForTimeout(2500);
+await page.click('#svSurveyBtn'); await page.click('#svNew'); await page.waitForTimeout(2500);
 console.log('page', await page.evaluate(() => ({ kind: SurveyApp.state.page.kind, space: SurveyApp.state.page.ink.space })));
 // draw with mouse at page centre
 const box = await page.locator('#svCanvas').boundingBox();

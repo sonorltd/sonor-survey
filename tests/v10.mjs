@@ -3,7 +3,7 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } }); const page = await ctx.newPage();
 const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('dialog', d => d.accept());
 await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'networkidle' }); await page.waitForTimeout(2500);
-await page.click('#svNew'); await page.waitForTimeout(2000);   // fresh session → opens a blank NOTES page (Bryn's case: pins on notes)
+await page.click('#svSurveyBtn'); await page.click('#svNew'); await page.waitForTimeout(2000);   // fresh session → opens a blank NOTES page (Bryn's case: pins on notes)
 const notesId = await page.evaluate(() => SurveyApp.state.page.id);
 const box = await page.locator('#svCanvas').boundingBox(); const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
 await page.click('[data-tool="mark"]');

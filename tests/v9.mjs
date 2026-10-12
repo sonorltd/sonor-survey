@@ -4,7 +4,7 @@ const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } }
 const errs = []; page.on('pageerror', e => errs.push(e.message));
 await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'networkidle' }); await page.waitForTimeout(2500);
 // fresh session so the report is small
-await page.click('#svNew'); await page.waitForTimeout(2000);
+await page.click('#svSurveyBtn'); await page.click('#svNew'); await page.waitForTimeout(2000);
 await page.evaluate(() => SurveyApp.addPage('plan', { floor_id: 'fhnyskasbyr7d', floor_code: 'GF', title: 'Ground floor', plan_ref: { plan_id: null } })); await page.waitForTimeout(1200);
 const planIdx = await page.evaluate(() => SurveyApp.state.pages.findIndex(p => p.id === SurveyApp.state.page.id));
 const box = await page.locator('#svCanvas').boundingBox(); const cx = box.x + box.width / 2, cy = box.y + box.height / 2;

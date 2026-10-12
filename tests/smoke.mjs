@@ -13,7 +13,7 @@ await page.waitForTimeout(2500);
 const hdr = await page.evaluate(() => ({ theme: document.documentElement.dataset.theme, hdrH: document.querySelector('.header')?.getBoundingClientRect().height, bar: !!document.querySelector('.sonor-project-bar'), sessions: document.querySelector('#svSession').options.length, sync: document.querySelector('#svSync').textContent }));
 console.log('boot', hdr);
 // new survey via UI
-await page.click('#svNew'); await page.waitForTimeout(4000);
+await page.click('#svSurveyBtn'); await page.click('#svNew'); await page.waitForTimeout(4000);
 let st = await page.evaluate(() => ({ session: !!SurveyApp.state.session, pages: SurveyApp.state.pages.length, canvasHidden: document.querySelector('#svCanvas').hidden }));
 console.log('after new', st);
 // draw with a "pen" — Playwright can't set pointerType=pen; dispatch synthetic pointer events

@@ -3,14 +3,14 @@ const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromi
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 } }); const page = await ctx.newPage();
 const errs = []; page.on('pageerror', e => errs.push(e.message)); page.on('dialog', d => d.accept());
 await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'networkidle' }); await page.waitForTimeout(2500);
-await page.click('#svNew'); await page.waitForTimeout(2000);
+await page.click('#svSurveyBtn'); await page.click('#svNew'); await page.waitForTimeout(2000);
 await page.evaluate(() => SurveyApp.addPage('plan', { floor_id: 'fhnyskasbyr7d', floor_code: 'GF', title: 'Ground floor', plan_ref: { plan_id: null } })); await page.waitForTimeout(1200);
 const box = await page.locator('#svCanvas').boundingBox(); const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
 // palette order = service order
 console.log('palette', await page.evaluate(() => Array.from(document.querySelectorAll('.sv-mark-chip')).slice(0, 8).map(b => b.dataset.code).join(' ')));
 await page.click('[data-tool="mark"]'); for (const [code, dx, dy] of [['sock', -300, -150], ['cspk', -200, -150], ['tv', 250, -120], ['pj', 300, 60]]) { await page.click('.sv-mark-chip[data-code="' + code + '"]'); await page.mouse.click(cx + dx, cy + dy); await page.waitForTimeout(80); }
 // TEXT tool: tap, type, Enter
-await page.click('[data-tool="text"]'); await page.mouse.click(cx - 320, cy + 40); await page.waitForTimeout(200);
+await page.click('#svMoreBtn'); await page.click('[data-tool="text"]'); await page.mouse.click(cx - 320, cy + 40); await page.waitForTimeout(200);
 const edOpen = await page.evaluate(() => !!document.querySelector('.sv-text-ed'));
 await page.keyboard.type('Ceiling height 2.6m'); await page.keyboard.press('Shift+Enter'); await page.keyboard.type('existing coving'); await page.keyboard.press('Enter'); await page.waitForTimeout(300);
 let objs = await page.evaluate(() => SurveyApp.ink().getPage().objects.map(o => ({ kind: o.kind, text: o.text, size: o.size, w: o.w, h: Math.round(o.h) })));
@@ -23,7 +23,7 @@ await page.click('#svTextEdit'); await page.waitForTimeout(150); await page.keyb
 objs = await page.evaluate(() => SurveyApp.ink().getPage().objects.map(o => o.text));
 console.log('text edited', editVisible, JSON.stringify(objs));
 // PINS: open menu, pick RFI, tap, sheet appears, type text + to, save
-await page.click('#svPinsBtn'); await page.waitForTimeout(150);
+await page.click('#svMoreBtn'); await page.waitForTimeout(150);
 const menuItems = await page.evaluate(() => Array.from(document.querySelectorAll('.sv-pin-item b')).map(b => b.textContent));
 await page.click('.sv-pin-item:nth-child(1)'); await page.waitForTimeout(150);
 await page.mouse.click(cx + 100, cy + 150); await page.waitForTimeout(300);
@@ -32,7 +32,7 @@ console.log('sheet', JSON.stringify(sheet)); console.log('ta box', await page.lo
 await page.fill('.sv-pin-text', 'Confirm ceiling void depth for in-ceiling speakers'); await page.fill('.sv-pin-to', 'Architect'); await page.click('.sv-pin-ok'); await page.waitForTimeout(300);
 // second RFI + a client comment
 await page.mouse.click(cx - 100, cy + 200); await page.waitForTimeout(300); console.log('2nd', await page.evaluate(() => ({ modal: !document.querySelector('#svModal').hidden, tool: SurveyApp.ink().getTool(), marks: SurveyApp.ink().getPage().marks.filter(m => m.kind === 'pin').map(m => [m.pin, m.n, m.text]), textEd: !!SurveyApp.state.textEd }))); await page.fill('.sv-pin-text', 'Is the rear wall load-bearing?'); await page.click('.sv-pin-ok'); await page.waitForTimeout(200);
-await page.click('#svPinsBtn'); await page.click('.sv-pin-item:nth-child(2)'); await page.mouse.click(cx + 200, cy + 200); await page.waitForTimeout(200); await page.fill('.sv-pin-text', 'Wants the TV above the fireplace'); await page.click('.sv-pin-ok'); await page.waitForTimeout(1800);
+await page.click('#svMoreBtn'); await page.click('.sv-pin-item:nth-child(2)'); await page.mouse.click(cx + 200, cy + 200); await page.waitForTimeout(200); await page.fill('.sv-pin-text', 'Wants the TV above the fireplace'); await page.click('.sv-pin-ok'); await page.waitForTimeout(1800);
 const pins = await page.evaluate(() => SurveyApp.ink().getPage().marks.filter(m => m.kind === 'pin').map(m => [m.pin, m.n, m.text, m.to]));
 console.log('menu', menuItems.join(' | '), '\nsheet', JSON.stringify(sheet), '\npins', JSON.stringify(pins));
 await page.screenshot({ path: 'shot-v11.png' });

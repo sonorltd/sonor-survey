@@ -266,7 +266,8 @@ window.SurveyStore = (function () {
     listSessions: listSessions, listPages: listPages, listProjectPhotos: listProjectPhotos, listTemplates: listTemplates, listHistory: listHistory,
     createSession: createSession, updateSession: updateSession, createPage: createPage, updatePage: updatePage,
     saveInk: saveInk, stashPhoto: stashPhoto, photoUrl: photoUrl, photoBlob: photoBlob,
-    blobGet: blobGet, blobSet: blobSet, flush: flush, publishSummary: publishSummary,
+    blobGet: blobGet, blobSet: blobSet, flush: flush, flushNow: _flush, publishSummary: publishSummary,
+    outboxAll: outboxAll, outboxDel: outboxDel,   // v0.7.0 — the saving sheet lists + retries + drops pending uploads
     client: function () { return supa; }
   };
 })();
