@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+__pycache__/
+.env
+*.log
+archive/
+
+_to_delete/

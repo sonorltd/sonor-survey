@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Survey — Sonor</title>
+<link rel="icon" href="../data/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sonor Survey">
+<meta name="theme-color" content="#141416">
+<!-- sonor-platform §1/§2: theme FIRST, then brand.css, then the served kit (mirror fallback), then shared chrome, then the app alias layer -->
+<script src="../data/sonor-theme.js"></script>
+<link rel="stylesheet" href="../data/brand.css">
+<script type="module" src="https://sonorltd.github.io/sonor-kit/v1/kit.js" onerror="import('./../data/kit/kit.js')"></script>
+<link rel="stylesheet" href="../data/sonor-header.css">
+<link rel="stylesheet" href="../data/sonor-components.css">
+<link rel="stylesheet" href="../data/app-vars.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="../sonor-db.js"></script>
+<script src="../data/sonor-brand.js"></script>
+<script src="../data/sonor-app.js"></script>
+<script src="../data/sonor-icons.js"></script>
+<script src="../data/sonor-header.js"></script>
+<script src="../data/sonor-project-list.js"></script>
+<script src="../data/sonor-project-bar.js"></script>
+<script src="../data/survey-config.js"></script>
+<script src="../data/survey-ink.js"></script>
+<script src="../data/survey-store.js"></script>
+<script src="../data/survey-plan.js"></script>
+<style>
+/* ═══ SONOR SURVEY — app-local LAYOUT only. No :root palette, no raw hex in chrome (S-4.1). ═══ */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var(--body); color: var(--text-primary); display: flex; flex-direction: column; height: 100dvh; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.sv-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-wrap: nowrap; overflow-x: auto; min-height: 44px; }
+.sv-bar::-webkit-scrollbar { display: none; }
+.sv-bar select, .sv-bar input { font: inherit; font-size: 13px; color: var(--text-primary); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-height: 34px; color-scheme: dark; }
+.sv-bar .btn { min-height: 34px; padding: 5px 10px; font-size: 13px; white-space: nowrap; }
+.sv-bar .btn.active, .sv-bar .sv-w.active { background: color-mix(in srgb, var(--accent) 24%, var(--card)); border-color: var(--accent); }
+.sv-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; flex: none; }
+.sv-grow { flex: 1 1 auto; }
+#svSession { max-width: 320px; }
+.sv-swatches { display: flex; gap: 5px; align-items: center; }
+.sv-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); background: var(--c); cursor: pointer; padding: 0; flex: none; }
+.sv-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+.sv-body { flex: 1 1 auto; display: flex; min-height: 0; }
+.sv-pages { width: 150px; flex: none; overflow-y: auto; padding: 8px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; background: var(--bg-1, var(--body)); }
+.sv-thumb { border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 5px; cursor: pointer; }
+.sv-thumb.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sv-thumb-img { background: #fff; border-radius: 3px; overflow: hidden; display: flex; justify-content: center; }
+.sv-thumb-img img { display: block; width: 100%; height: auto; }
+.sv-thumb-lbl { font-size: 10.5px; margin-top: 4px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-thumb-kind { font-family: 'DM Mono', monospace; text-transform: uppercase; font-size: 9px; letter-spacing: .06em; }
+.sv-thumb-add { justify-content: center; }
+.sv-stage { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.sv-meta { display: flex; gap: 8px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.sv-meta input, .sv-meta select { font: inherit; font-size: 12.5px; color: var(--text-primary); background: var(--card); border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; color-scheme: dark; }
+#svTitle { flex: 1 1 200px; min-width: 120px; } #svRoom { width: 150px; }
+.sv-canvas { flex: 1 1 auto; position: relative; overflow: hidden; background: var(--bg-0, var(--body)); background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 22%, transparent) 1px, transparent 1px); background-size: 22px 22px; touch-action: none; cursor: crosshair; }
+.sv-canvas[data-tool="pan"] { cursor: grab; } .sv-canvas[data-tool="eraser"] { cursor: cell; }
+.sv-layer { position: absolute; inset: 0; }
+.sv-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); text-align: center; padding: 24px; }
+.sv-empty[hidden], .sv-canvas[hidden] { display: none; }
+.sv-empty h2 { margin: 0; color: var(--text-primary); font-weight: 600; }
+#svAddMenu { position: fixed; z-index: 200; min-width: 200px; padding: 6px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0,0,0,.4); display: flex; flex-direction: column; gap: 3px; }
+#svAddMenu[hidden] { display: none; }
+#svAddMenu button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 9px 10px; min-height: 40px; }
+.sv-modal { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.sv-modal[hidden] { display: none; }
+.sv-modal-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; width: min(560px, 100%); max-height: 80vh; overflow: auto; }
+.sv-modal-h { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.sv-modal-b { padding: 14px 16px; }
+.sv-floorlist { display: flex; flex-direction: column; gap: 8px; }
+.sv-floor-btn { justify-content: flex-start; text-align: left; min-height: 44px; }
+#svToast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 400; background: var(--card); color: var(--text-primary); border: 1px solid var(--border-strong, var(--border)); border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+#svToast[hidden] { display: none; }
+.sv-sync { white-space: nowrap; }
+@media (max-width: 760px) { .sv-pages { width: 96px; } #svSession { max-width: 170px; } .sv-bar .btn span.lbl { display: none; } }
+</style>
+</head>
+<body>
+<div id="sonor-header"></div>
+<script>SonorHeader.init({ appName: 'Survey', repo: 'sonor-survey', faviconHref: '../data/favicon.svg' });</script>
+<div id="projectBarHost"></div>
+
+<div class="sv-bar" data-bar>
+  <select id="svSession" aria-label="Survey session"></select>
+  <select id="svKind" aria-label="Kind"></select>
+  <button class="btn" id="svNew" type="button">＋ New survey</button>
+  <button class="btn" id="svClose" type="button">Close survey</button>
+  <span class="sv-sep"></span>
+  <button class="btn" id="svEngineer" type="button" title="Who is surveying">👤 <span class="lbl">Engineer</span></button>
+  <button class="btn" id="svPublish" type="button" title="Publish the survey summary + photos to the project (Brief page)">⬆ <span class="lbl">Publish</span></button>
+  <span class="sv-grow"></span>
+  <span class="s-pill s-pill-status sv-sync" id="svSync" data-tone="dim">…</span>
+</div>
+
+<div class="sv-bar" data-bar>
+  <button class="btn" id="svAdd" type="button">＋ <span class="lbl">Page</span></button>
+  <span class="sv-sep"></span>
+  <button class="btn active" type="button" data-tool="pen" title="Pen (P)">✏️ <span class="lbl">Pen</span></button>
+  <button class="btn" type="button" data-tool="hl" title="Highlighter (H)">🖍 <span class="lbl">Highlight</span></button>
+  <button class="btn" type="button" data-tool="eraser" title="Eraser (E) — removes whole strokes">⌫ <span class="lbl">Eraser</span></button>
+  <button class="btn" type="button" data-tool="pan" title="Pan (hold Space)">✋ <span class="lbl">Pan</span></button>
+  <span class="sv-sep"></span>
+  <div class="sv-swatches" id="svColours"></div>
+  <span class="sv-sep"></span>
+  <div class="sv-swatches" id="svWidths"></div>
+  <span class="sv-sep"></span>
+  <button class="btn" id="svUndo" type="button" title="Undo (⌘Z)">↶</button>
+  <button class="btn" id="svRedo" type="button" title="Redo (⇧⌘Z)">↷</button>
+  <button class="btn" id="svFit" type="button" title="Fit page (F)">⤢</button>
+  <span class="sv-grow"></span>
+  <button class="btn" id="svFinger" type="button" aria-pressed="false" title="Draw with a finger too (default: Pencil draws, fingers pan / pinch)">☝ <span class="lbl">Finger</span></button>
+</div>
+
+<div class="sv-body">
+  <aside class="sv-pages" id="svPages"></aside>
+  <div class="sv-stage">
+    <div class="sv-meta">
+      <input id="svTitle" placeholder="Page title (e.g. Cinema room — rear wall)" aria-label="Page title">
+      <select id="svFloor" aria-label="Floor"><option value="">Floor</option></select>
+      <input id="svRoom" placeholder="Room" aria-label="Room">
+      <button class="btn btn-sm" id="svRemove" type="button">Remove page</button>
+    </div>
+    <div class="sv-canvas" id="svCanvas" hidden data-tool="pen"></div>
+    <div class="sv-empty" id="svEmpty">
+      <h2>Survey</h2>
+      <p>Pick a project in the bar above, then <b>＋ New survey</b>. Pages: blank / lined / grid notes, the Takeoffs plan for any floor, or a photo — all drawn on with the Pencil and synced to the project.</p>
+      <p class="muted">Works offline — pages queue and sync when signal returns.</p>
+    </div>
+  </div>
+</div>
+
+<div id="svAddMenu" hidden>
+  <button class="btn" type="button" data-add="blank">📄 Blank page</button>
+  <button class="btn" type="button" data-add="lined">📝 Lined page</button>
+  <button class="btn" type="button" data-add="grid">▦ Grid page</button>
+  <button class="btn" type="button" data-add="plan">🗺 Plan (Takeoffs floor)</button>
+  <button class="btn" type="button" data-add="photo">📷 Take photo</button>
+  <button class="btn" type="button" data-add="photo-lib">🖼 Photos from library</button>
+</div>
+<input type="file" id="svPhotoIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="svPhotoLib" accept="image/*" multiple hidden>
+
+<div class="sv-modal" id="svModal" hidden>
+  <div class="sv-modal-card">
+    <div class="sv-modal-h"><span id="svModalTitle"></span><button class="btn btn-sm" id="svModalClose" type="button">✕</button></div>
+    <div class="sv-modal-b" id="svModalBody"></div>
+  </div>
+</div>
+<div id="svToast" hidden></div>
+
+<script>
+  const APP_VERSION = '0.1.0';
+  SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey' });
+</script>
+<script src="../data/survey-app.js"></script>
+</body>
+</html>
