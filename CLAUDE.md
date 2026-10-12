@@ -1,6 +1,6 @@
-# Survey — Claude Code Context (v0.1.0)
+# Survey — Claude Code Context (v0.2.0)
 
-> **Current version: 0.1.0** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
+> **Current version: 0.2.0** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
 > Inherits: `../CLAUDE.md` (master rules) · Brand source: `../Branding - CORE/brand-core.xml`
 > Born 2026-10-12 via `register-app.sh` (Bryn: "a survey app, essentially a notepad like Notability … Apple Pencil … markup plans during client meetings and site survey … link end to end for the project, with survey photos and plan markups, plus notes" — "a bit like Takeoffs in principle but a bit more basic").
 
@@ -16,19 +16,23 @@ can show the survey + photos without this app.
 `dashboard/sonor-survey.html` is a thin shell. App-local modules in `data/` (edit HERE — not synced masters):
 | Module | Owns |
 |---|---|
-| `survey-config.js` | page spaces (note 1000×1414 · **plan 1400×900 = Takeoffs frame, never change** · photo = image px), pen palette (ink + 10 service colours), widths, session kinds |
-| `survey-ink.js` | the ink engine — Pointer Events (pen draws; one finger pans, two pinch; `fingerDraws` opt-in; touch ignored 1.5 s after a pen contact = palm), coalesced events, pressure width, highlighter (multiply), stroke eraser, undo/redo, thumbnails. Direct-object: points stored in PAGE units, view transform only at render |
+| `survey-config.js` | page spaces (note **1414×1000 landscape** by default, portrait toggle in the add menu · **plan 1400×900 = Takeoffs frame, never change** · photo = image px), pen palette (ink + 10 service colours), widths, session kinds |
+| `survey-ink.js` | the ink engine — **objects layer** (images dropped / pasted / inserted: Select tool moves + corner-resizes, aspect locked, ⌫ removes, undo-able), static `SurveyInk.renderPage()` shared by thumbnails + the PDF, pan clamp (a scroll can never lose the page) — Pointer Events (pen draws; one finger pans, two pinch; `fingerDraws` opt-in; touch ignored 1.5 s after a pen contact = palm), coalesced events, pressure width, highlighter (multiply), stroke eraser, undo/redo, thumbnails. Direct-object: points stored in PAGE units, view transform only at render |
 | `survey-store.js` | Supabase + IndexedDB (`sonor-survey` db: `outbox` / `cache` / `blobs`). Local-first writes; `page.ink` ops coalesce per page and are CAS on `survey_pages.version` with a stroke-level merge on conflict (union by stroke id minus erased ids); `publishSummary()` → `sonor_merge_project_metadata` |
 | `survey-plan.js` | floors (`takeoffs_floors`) + active plan (`takeoffs_floor_plans` → signed URL from `takeoffs-plans`), pdf.js render, fit `k = min(1400/W, 900/H)` anchored top-left (identical to Takeoffs `loadBackgroundImage`), plan PNG cached in IDB for offline; photo downscale (EXIF-safe) |
+| `survey-checklist.js` | checklist pages: template copy → `metadata.checklist` (ticks · answers · measurements · yes/no, add items on the spot), paper DOM sheet (Scribble-friendly) |
+| `survey-pdf.js` | survey / meeting REPORT on `sonor-pdf-luxury.js` (cover with first photo as hero · summary + contents · one A4 per page via renderPage · checklist tick tables, paginated); WinAnsi-safe text (`pd`), tick drawn as a path (no ✓ glyph in Gilroy) |
 | `survey-app.js` | UI: project bar → sessions → page strip → canvas; page meta (title / floor / room); add-page menu; camera inputs; autosave 1.2 s; sync chip |
 | `sw.js` + `manifest.webmanifest` | installable PWA (Add to Home Screen on the iPad), app shell cached; Supabase never cached. `CACHE_VERSION` is bump site 2 |
 
 ## Data (SUPABASE-FIRST)
 - `survey_sessions` (id, project_id → projects, title, kind survey|meeting|snag-walk|handover|other, status open|closed, engineer, started_at, ended_at, summary, metadata)
 - `survey_pages` (id, session_id → sessions CASCADE, project_id, seq, kind blank|lined|grid|plan|photo, title, floor_id, floor_code, room, plan_ref jsonb {plan_id, storage_path, mime, page_index, revision_label, bucket}, photo_path, ink jsonb `{v, space:{w,h}, strokes:[{id,tool,c,w,t,pts:[[x,y,p]…]}]}`, thumb_path, **version** (CAS; `_survey_touch` trigger auto-bumps on an ink change that arrives without one — takeoffs_floors law), metadata)
+- `survey_templates` (key, name, service_nn, kind checklist|questions, sort, active, items jsonb) — SSOT for checklists + client questions; 12 seeded 2026-10-12 (client questions, cinema, media room, audio, lighting, automation, climate, CCTV, network, infrastructure, takeover). Edit rows to change future pages; existing pages keep their copy.
+- `survey_pages.ink.objects[]` = `{id, kind:'image', src, path, x, y, w, h, t}` — image blobs at `site-photos/{project}/survey/{session}/{objId}.jpg`, merged by id like strokes (removed ids ride the erase list).
 - RLS: anon SELECT / INSERT / UPDATE, no DELETE. "Remove page" = `metadata.hidden = true`. Test rows carry `metadata.is_test` (§28).
 - Storage: `site-photos/{project_id}/survey/{session_id}/{page_id}.jpg` (public bucket; URL via `getPublicUrl`). Plans are READ from `takeoffs-plans` only — this app never uploads a plan.
-- Migration: `survey_app_v0_1_0` (2026-10-12).
+- Migrations: `survey_app_v0_1_0`, `survey_touch_split`, `survey_v0_2_0_checklists` (2026-10-12).
 
 ## Seams
 - **Consumes:** `sonor-db.js`, `sonor-app.js` (`sonorSortFloors`), `sonor-brand.js`, `sonor-header.js`, `sonor-project-bar.js` (+ `sonor-project-list.js`, WQ bar), `sonor-icons.js`, `sonor-theme.js` + brand.css + served kit (§1/§2); `takeoffs_floors` / `takeoffs_floor_plans` / bucket `takeoffs-plans` (read-only); pdf.js 3.11.174 (same pin as Takeoffs).
@@ -52,6 +56,7 @@ None.
 5. Publish via the merge RPC only (never `UPDATE projects SET metadata`).
 
 ## Feature timeline
+- **v0.2.0 (2026-10-12)** — bg clip bug fixed (page 'scrolling around' / striped paper on Mac); landscape notes default; drop / paste / insert images as movable objects; checklist pages from `survey_templates` (12 templates); luxury PDF report (📄 Report). Headless-verified: pan sanity, object move / resize / delete / undo / cloud round-trip, checklist tick + value, 4-page report rasterised.
 - **v0.1.0 (2026-10-12)** — born: sessions, five page kinds, Pencil ink engine, Takeoffs plan pages, photo pages → site-photos, IndexedDB outbox + CAS/merge sync, PWA shell, survey_summary publish. Smoke-tested headless (iPad Pro 11 profile) against SON-2026-BGTRL (is_test).
 
 ## Bump sites (5)

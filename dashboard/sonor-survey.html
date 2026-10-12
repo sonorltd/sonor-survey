@@ -33,6 +33,12 @@
 <script src="../data/survey-ink.js"></script>
 <script src="../data/survey-store.js"></script>
 <script src="../data/survey-plan.js"></script>
+<script src="../data/survey-checklist.js"></script>
+<!-- survey / meeting report PDF — shared luxury chrome (root master, synced) on pdf-lib -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="../data/sonor-pdf-luxury.js"></script>
+<script src="../data/survey-pdf.js"></script>
 <style>
 /* ═══ SONOR SURVEY — app-local LAYOUT only. No :root palette, no raw hex in chrome (S-4.1). ═══ */
 * { box-sizing: border-box; }
@@ -81,6 +87,30 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 #svToast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 400; background: var(--card); color: var(--text-primary); border: 1px solid var(--border-strong, var(--border)); border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 #svToast[hidden] { display: none; }
 .sv-sync { white-space: nowrap; }
+.sv-stage.sv-drop .sv-canvas, .sv-stage.sv-drop #svCheck { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.sv-canvas[data-tool="select"] { cursor: default; }
+/* checklist sheet — paper (§11) */
+#svCheck { flex: 1 1 auto; overflow: auto; padding: 18px; background: var(--bg-0, var(--body)); }
+#svCheck[hidden] { display: none; }
+.sv-sheet { max-width: 860px; margin: 0 auto; padding: 28px 32px 36px; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.sv-sheet-h { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #1a1814; padding-bottom: 10px; margin-bottom: 8px; }
+.sv-sheet-title { font-size: 20px; font-weight: 700; }
+.sv-sheet-prog { font-family: 'DM Mono', monospace; font-size: 12px; opacity: .6; }
+.sv-ci { display: grid; grid-template-columns: 34px 1fr 28px; gap: 8px; align-items: start; padding: 9px 0; border-bottom: 1px solid #e3e6ec; }
+.sv-ci.done .sv-ci-text { opacity: .55; text-decoration: line-through; }
+.sv-ci-tick { width: 30px; height: 30px; border-radius: 6px; border: 1.5px solid #8a8f99; background: #fff; color: #fff; font-size: 18px; line-height: 26px; padding: 0; cursor: pointer; }
+.sv-ci-tick[aria-pressed="true"] { background: #78ba57; border-color: #78ba57; }
+.sv-ci-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sv-ci-text { font-size: 15px; line-height: 1.35; padding: 4px 2px; outline: none; border-radius: 3px; }
+.sv-ci-text:focus { background: #f2f5fa; }
+.sv-ci-text:empty::before { content: 'New item…'; opacity: .4; }
+.sv-ci-val, .sv-ci-note { font: inherit; font-size: 14px; border: 1px solid #cdd3dd; border-radius: 5px; padding: 7px 9px; background: #fbfcfe; color: #1a1814; width: 100%; resize: none; }
+.sv-ci-note { font-size: 12.5px; border-style: dashed; }
+.sv-ci-yn { display: flex; gap: 6px; } .sv-ci-yn .btn { color: #1a1814; background: #fff; border-color: #cdd3dd; } .sv-ci-yn .btn.active { background: #1a1814; color: #fff; border-color: #1a1814; }
+.sv-ci-del { border: 0; background: transparent; color: #8a8f99; cursor: pointer; font-size: 14px; padding: 6px; }
+.sv-sheet-add { display: flex; gap: 8px; margin-top: 14px; } .sv-sheet-add .btn { color: #1a1814; background: #fff; border-color: #cdd3dd; }
+.sv-svc-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--svc, var(--text-muted)); margin-right: 6px; }
+#svPortrait { justify-content: center; border-top: 1px solid var(--border); margin-top: 4px; }
 @media (max-width: 760px) { .sv-pages { width: 96px; } #svSession { max-width: 170px; } .sv-bar .btn span.lbl { display: none; } }
 </style>
 </head>
@@ -97,6 +127,7 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
   <span class="sv-sep"></span>
   <button class="btn" id="svEngineer" type="button" title="Who is surveying">👤 <span class="lbl">Engineer</span></button>
   <button class="btn" id="svPublish" type="button" title="Publish the survey summary + photos to the project (Brief page)">⬆ <span class="lbl">Publish</span></button>
+  <button class="btn" id="svReport" type="button" title="Survey / meeting report PDF (Sonor luxury chrome)">📄 <span class="lbl">Report</span></button>
   <span class="sv-grow"></span>
   <span class="s-pill s-pill-status sv-sync" id="svSync" data-tone="dim">…</span>
 </div>
@@ -107,7 +138,9 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
   <button class="btn active" type="button" data-tool="pen" title="Pen (P)">✏️ <span class="lbl">Pen</span></button>
   <button class="btn" type="button" data-tool="hl" title="Highlighter (H)">🖍 <span class="lbl">Highlight</span></button>
   <button class="btn" type="button" data-tool="eraser" title="Eraser (E) — removes whole strokes">⌫ <span class="lbl">Eraser</span></button>
+  <button class="btn" type="button" data-tool="select" title="Select / move / resize images (V)">⬚ <span class="lbl">Select</span></button>
   <button class="btn" type="button" data-tool="pan" title="Pan (hold Space)">✋ <span class="lbl">Pan</span></button>
+  <button class="btn" id="svDelObj" type="button" hidden title="Remove the selected image (⌫)">🗑 <span class="lbl">Image</span></button>
   <span class="sv-sep"></span>
   <div class="sv-swatches" id="svColours"></div>
   <span class="sv-sep"></span>
@@ -130,9 +163,10 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
       <button class="btn btn-sm" id="svRemove" type="button">Remove page</button>
     </div>
     <div class="sv-canvas" id="svCanvas" hidden data-tool="pen"></div>
+    <div id="svCheck" hidden></div>
     <div class="sv-empty" id="svEmpty">
       <h2>Survey</h2>
-      <p>Pick a project in the bar above, then <b>＋ New survey</b>. Pages: blank / lined / grid notes, the Takeoffs plan for any floor, or a photo — all drawn on with the Pencil and synced to the project.</p>
+      <p>Pick a project in the bar above, then <b>＋ New survey</b>. Pages: blank / lined / grid notes, the Takeoffs plan for any floor, a photo, or a checklist for the service you're surveying — all synced to the project. Drop or paste photos straight onto a page.</p>
       <p class="muted">Works offline — pages queue and sync when signal returns.</p>
     </div>
   </div>
@@ -144,8 +178,12 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
   <button class="btn" type="button" data-add="grid">▦ Grid page</button>
   <button class="btn" type="button" data-add="plan">🗺 Plan (Takeoffs floor)</button>
   <button class="btn" type="button" data-add="photo">📷 Take photo</button>
-  <button class="btn" type="button" data-add="photo-lib">🖼 Photos from library</button>
+  <button class="btn" type="button" data-add="photo-lib">🖼 Photo pages from library</button>
+  <button class="btn" type="button" data-add="image">🖼 Insert image on this page</button>
+  <button class="btn" type="button" data-add="checklist">☑ Checklist / questions…</button>
+  <button class="btn" type="button" id="svPortrait">▭ Landscape pages</button>
 </div>
+<input type="file" id="svImageIn" accept="image/*" multiple hidden>
 <input type="file" id="svPhotoIn" accept="image/*" capture="environment" hidden>
 <input type="file" id="svPhotoLib" accept="image/*" multiple hidden>
 
@@ -158,7 +196,7 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.1.0';
+  const APP_VERSION = '0.2.0';
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey' });
 </script>
 <script src="../data/survey-app.js"></script>

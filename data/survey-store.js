@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (app-local, v0.1.0)
+/* Sonor Survey — STORE (app-local, v0.2.0 — ink.objects merged by id like strokes; survey_templates read)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -74,6 +74,12 @@ window.SurveyStore = (function () {
       } catch (e) { }
     }
     return (await cacheGet(key)) || [];
+  }
+  async function listTemplates() {
+    if (status.online) {
+      try { var r = await supa.from('survey_templates').select('*').eq('active', true).order('sort'); if (!r.error) { await cacheSet('templates', r.data); return r.data; } } catch (e) { }
+    }
+    return (await cacheGet('templates')) || [];
   }
   async function listProjectPhotos(pid) {
     var r = await supa.from('survey_pages').select('id,session_id,title,floor_code,room,photo_path,created_at').eq('project_id', pid).eq('kind', 'photo').order('created_at');
@@ -184,7 +190,11 @@ window.SurveyStore = (function () {
     ((cloud && cloud.strokes) || []).forEach(function (s) { if (!er[s.id]) map[s.id] = s; });
     ((local && local.strokes) || []).forEach(function (s) { map[s.id] = s; });
     var strokes = Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) { return (a.t || 0) - (b.t || 0); });
-    return Object.assign({}, local, { strokes: strokes });
+    var om = {};
+    ((cloud && cloud.objects) || []).forEach(function (o) { if (!er[o.id]) om[o.id] = o; });
+    ((local && local.objects) || []).forEach(function (o) { om[o.id] = o; });
+    var objects = Object.keys(om).map(function (k) { return om[k]; }).sort(function (a, b) { return (a.t || 0) - (b.t || 0); });
+    return Object.assign({}, local, { strokes: strokes, objects: objects });
   }
   function isNet(e) { var m = String((e && e.message) || e || ''); return /fetch|network|Failed|load failed|timeout|abort/i.test(m) || !navigator.onLine; }
 
@@ -195,10 +205,11 @@ window.SurveyStore = (function () {
     var p = await supa.from('survey_pages').select('id,kind,title,floor_code,room,photo_path,session_id').eq('project_id', pid);
     if (s.error || p.error) return;
     var pages = p.data, photos = pages.filter(function (x) { return x.kind === 'photo' && x.photo_path; });
+    var checklists = pages.filter(function (x) { return x.kind === 'checklist'; }).length;
     var patch = { survey_summary: {
       app: 'survey', version: CFG.version, updated_at: nowIso(),
       sessions: s.data.length, last_session: s.data[0] ? { id: s.data[0].id, title: s.data[0].title, kind: s.data[0].kind, status: s.data[0].status, started_at: s.data[0].started_at } : null,
-      pages: { notes: pages.filter(function (x) { return /blank|lined|grid/.test(x.kind); }).length, plans: pages.filter(function (x) { return x.kind === 'plan'; }).length, photos: photos.length },
+      pages: { notes: pages.filter(function (x) { return /blank|lined|grid/.test(x.kind); }).length, plans: pages.filter(function (x) { return x.kind === 'plan'; }).length, photos: photos.length, checklists: checklists },
       photos: photos.slice(0, 60).map(function (x) { return { id: x.id, path: x.photo_path, url: photoUrl(x.photo_path), title: x.title || null, floor: x.floor_code || null, room: x.room || null }; }),
       url: 'https://sonorltd.github.io/sonor-survey/?pid=' + pid
     } };
@@ -215,7 +226,7 @@ window.SurveyStore = (function () {
     onStatus: function (f) { listeners.push(f); f(status); },
     status: function () { return status; },
     uuid: uuid, photoPath: photoPath,
-    listSessions: listSessions, listPages: listPages, listProjectPhotos: listProjectPhotos,
+    listSessions: listSessions, listPages: listPages, listProjectPhotos: listProjectPhotos, listTemplates: listTemplates,
     createSession: createSession, updateSession: updateSession, createPage: createPage, updatePage: updatePage,
     saveInk: saveInk, stashPhoto: stashPhoto, photoUrl: photoUrl, photoBlob: photoBlob,
     blobGet: blobGet, blobSet: blobSet, flush: flush, publishSummary: publishSummary,

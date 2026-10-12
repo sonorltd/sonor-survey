@@ -2,18 +2,19 @@
 window.__SURVEY_CONFIG__ = (function () {
   'use strict';
   return {
-    version: '0.1.0',
+    version: '0.2.0',
     appKey: 'survey',
     buckets: { photos: 'site-photos', plans: 'takeoffs-plans' },
     // Page spaces (page-unit frames). PLAN = the Takeoffs world frame (1400×900 fit, anchored top-left) so a
     // markup drawn here lands on the same plan coordinates Takeoffs uses — never change these two numbers.
-    spaces: { note: { w: 1000, h: 1414 }, plan: { w: 1400, h: 900 }, photoMax: 1600 },
+    spaces: { note: { w: 1414, h: 1000 }, notePortrait: { w: 1000, h: 1414 }, plan: { w: 1400, h: 900 }, photoMax: 1600, objectMax: 1400 },   // v0.2.0: landscape notes by default (Bryn 2026-10-12)
     pageKinds: [
       { kind: 'blank', label: 'Blank', icon: 'file-text' },
       { kind: 'lined', label: 'Lined', icon: 'file-text' },
       { kind: 'grid',  label: 'Grid',  icon: 'layers' },
       { kind: 'plan',  label: 'Plan',  icon: 'map' },
-      { kind: 'photo', label: 'Photo', icon: 'camera' }
+      { kind: 'photo', label: 'Photo', icon: 'camera' },
+      { kind: 'checklist', label: 'Checklist', icon: 'clipboard-list' }
     ],
     sessionKinds: [['survey', 'Site survey'], ['meeting', 'Client meeting'], ['snag-walk', 'Snag walk'], ['handover', 'Handover'], ['other', 'Other']],
     // Pen palette: ink + the 10 service colours (brand-core — never reassigned)
