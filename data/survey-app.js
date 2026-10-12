@@ -68,7 +68,27 @@
     $('#svClose').textContent = S.session.status === 'closed' ? '↩ Reopen survey' : '✓ Complete survey';
     S.pages = (await window.SurveyStore.listPages(S.pid, sid)).filter(function (p) { return !(p.metadata && p.metadata.hidden); });
     renderStrip();
+    window.SurveyStore.subscribePages(sid, onRemotePage);   // v0.9.1 — the iPad's marks land on the Mac (and back) as they are saved
     if (S.pages.length) openPage(S.pages[0].id); else showEmpty();
+  }
+  // v0.9.1 — a page row changed in the cloud (another device, or our own echo)
+  async function onRemotePage(row, ev) {
+    if (!row || !S.session || row.session_id !== S.session.id) return;
+    var ST = window.SurveyStore; if ((row.version || 0) <= ST.knownVersion(row.id) && ev !== 'INSERT') return;   // our own write, or older
+    ST.noteVersion(row.id, row.version);
+    var p = S.pages.find(function (x) { return x.id === row.id; });
+    if (row.metadata && row.metadata.hidden) { if (p) { S.pages = S.pages.filter(function (x) { return x !== p; }); renderStrip(); if (S.page === p) { S.page = null; if (S.pages.length) openPage(S.pages[0].id); else showEmpty(); } } return; }
+    if (!p) { S.pages.push(row); renderStrip(); if (S.page) openPage(S.page.id); return; }
+    var wasOpen = S.page === p, localDirty = wasOpen && !!S.saveT;
+    var merged = row.ink;
+    if (localDirty) { var pg = ink.getPage(); merged = ST.mergeInk(row.ink, { strokes: pg.strokes, objects: pg.objects, marks: pg.marks }, S.erased); }
+    ['title', 'room', 'floor_code', 'metadata', 'version', 'photo_path'].forEach(function (k) { p[k] = row[k]; }); p.ink = merged;
+    var el = thumbEl(p.id); if (el) thumbFor(p, el);
+    if (wasOpen) {
+      var pg2 = ink.getPage(), haveImgs = (merged.objects || []).every(function (o) { return o.kind !== 'image' || (pg2 && pg2.images && pg2.images[o.src]); });
+      if (haveImgs && p.kind !== 'checklist') { ink.replaceContent(merged); renderPageMeta(); refreshTags(); }
+      else openPage(p.id);
+    } else renderStrip();
   }
   async function toggleClose() {
     if (!S.session) return;

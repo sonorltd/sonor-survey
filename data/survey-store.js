@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (v0.6.0 — pins → survey_summary.pins + Takeoffs plan_notes mirror) (app-local, v0.4.0 — ink.objects + ink.marks merged by id like strokes; survey_templates read; summary carries marks_by_floor + photo plan_pins)
+/* Sonor Survey — STORE (v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -64,17 +64,32 @@ window.SurveyStore = (function () {
     }
     return (await cacheGet(key)) || [];
   }
+  // v0.9.1 — CLOUD FIRST, LOCAL OVERLAID (Bryn: "devices not showing on mac now but they are there on the ipad"). The old rule
+  // served the STALE device cache whenever anything was still queued for the project (a photo upload, say), so a second device
+  // never saw the iPad's marks. Now: fetch the cloud rows whenever online, then lay this device's unsent ops over them by id —
+  // nothing local is lost, nothing remote is hidden. Cache only when offline.
+  var known = {};   // page id → highest version this device has seen / written (realtime echo + staleness guard)
   async function listPages(pid, sid) {
-    var key = 'pages:' + sid, pend = await hasPendingFor(pid);
-    if (status.online && !pend) {
-      try {
-        var r = await supa.from('survey_pages').select('*').eq('session_id', sid).order('seq');
-        if (!r.error) { await cacheSet(key, r.data); return r.data; }
-        console.warn('[Survey] pages', r.error.message);
-      } catch (e) { }
-    }
-    return (await cacheGet(key)) || [];
+    var key = 'pages:' + sid, rows = null;
+    if (status.online) { try { var r = await supa.from('survey_pages').select('*').eq('session_id', sid).order('seq'); if (!r.error) rows = r.data; else console.warn('[Survey] pages', r.error.message); } catch (e) { } }
+    if (!rows) return (await cacheGet(key)) || [];
+    var ops = await outboxAll();
+    ops.forEach(function (o) {
+      if (o.op === 'page.insert' && o.row && o.row.session_id === sid) { if (!rows.some(function (x) { return x.id === o.row.id; })) rows.push(o.row); }
+      else if (o.op === 'page.ink' && o.sid === sid) { var x = rows.find(function (y) { return y.id === o.id; }); if (x) x.ink = mergeInk(x.ink, o.ink, o.erased); }
+      else if (o.op === 'page.update') { var y2 = rows.find(function (y) { return y.id === o.id; }); if (y2) Object.assign(y2, o.patch); }
+    });
+    rows.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
+    rows.forEach(function (x) { known[x.id] = Math.max(known[x.id] || 0, x.version || 0); });
+    await cacheSet(key, rows); return rows;
   }
+  // v0.9.1 — LIVE: every device on the same survey sees the others' pages / ink within a second (same channel shape as the Takeoffs layer)
+  var chan = null;
+  function subscribePages(sid, cb) {
+    unsubscribePages(); if (!supa || !sid) return;
+    try { chan = supa.channel('survey-pages:' + sid).on('postgres_changes', { event: '*', schema: 'public', table: 'survey_pages', filter: 'session_id=eq.' + sid }, function (payload) { try { cb(payload.new || payload.old, payload.eventType); } catch (e) { console.warn('[Survey] realtime cb', e); } }).subscribe(); } catch (e) { console.warn('[Survey] realtime', e.message); }
+  }
+  function unsubscribePages() { if (chan) { try { supa.removeChannel(chan); } catch (e) { } chan = null; } }
   async function listHistory(pageId) {
     var r = await supa.from('survey_page_history').select('id,version,ink,checklist,saved_at,superseded_at,title').eq('page_id', pageId).order('version', { ascending: false }).limit(60);
     return r.error ? [] : r.data;
@@ -184,7 +199,7 @@ window.SurveyStore = (function () {
       if (g.data.version !== o.base) ink = mergeInk(g.data.ink, o.ink, o.erased);
       var u = await supa.from('survey_pages').update({ ink: ink, version: base + 1 }).eq('id', o.id).eq('version', base).select('id,version');
       if (u.error) return isNet(u.error) ? 'retry' : true;
-      if (u.data && u.data.length) { await upsertCache('pages:' + o.sid, { id: o.id, ink: ink, version: base + 1 }); return true; }
+      if (u.data && u.data.length) { known[o.id] = base + 1; await upsertCache('pages:' + o.sid, { id: o.id, ink: ink, version: base + 1 }); return true; }
     }
     return true;
   }
@@ -202,7 +217,7 @@ window.SurveyStore = (function () {
     ((cloud && cloud.marks) || []).forEach(function (m) { if (!er[m.id]) mm[m.id] = m; });
     ((local && local.marks) || []).forEach(function (m) { mm[m.id] = m; });
     var marks = Object.keys(mm).map(function (k) { return mm[k]; }).sort(function (a, b) { return (a.t || 0) - (b.t || 0); });
-    return Object.assign({}, local, { strokes: strokes, objects: objects, marks: marks });
+    return Object.assign({}, cloud || {}, local || {}, { strokes: strokes, objects: objects, marks: marks });   // v0.9.1: cloud fields (space…) fill in when the local side is content-only
   }
   function isNet(e) { var m = String((e && e.message) || e || ''); return /fetch|network|Failed|load failed|timeout|abort/i.test(m) || !navigator.onLine; }
 
@@ -267,7 +282,7 @@ window.SurveyStore = (function () {
     createSession: createSession, updateSession: updateSession, createPage: createPage, updatePage: updatePage,
     saveInk: saveInk, stashPhoto: stashPhoto, photoUrl: photoUrl, photoBlob: photoBlob,
     blobGet: blobGet, blobSet: blobSet, flush: flush, flushNow: _flush, publishSummary: publishSummary,
-    outboxAll: outboxAll, outboxDel: outboxDel,   // v0.7.0 — the saving sheet lists + retries + drops pending uploads
+    outboxAll: outboxAll, outboxDel: outboxDel, subscribePages: subscribePages, unsubscribePages: unsubscribePages, knownVersion: function (id) { return known[id] || 0; }, noteVersion: function (id, v) { known[id] = Math.max(known[id] || 0, v || 0); }, mergeInk: mergeInk,   // v0.7.0 — the saving sheet lists + retries + drops pending uploads
     client: function () { return supa; }
   };
 })();

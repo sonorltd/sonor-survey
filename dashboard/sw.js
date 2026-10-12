@@ -1,5 +1,5 @@
 /* Sonor Survey — service worker: app shell offline (network-first for pages, cache-first for assets; Supabase + CDN pass through) */
-const CACHE_VERSION = 'sonor-survey-0.9.0';
+const CACHE_VERSION = 'sonor-survey-0.9.1';
 const SHELL = ['./sonor-survey.html', './manifest.webmanifest', '../sonor-db.js', '../data/sonor-theme.js', '../data/brand.css', '../data/sonor-header.css', '../data/sonor-components.css', '../data/app-vars.css',
   '../data/sonor-brand.js', '../data/sonor-app.js', '../data/sonor-icons.js', '../data/sonor-header.js', '../data/sonor-project-list.js', '../data/sonor-project-bar.js',
   '../data/sonor-ink.js', '../data/sonor-survey-link.js', '../data/survey-config.js', '../data/survey-ink.js', '../data/survey-store.js', '../data/survey-plan.js', '../data/survey-checklist.js', '../data/survey-pdf.js', '../data/survey-app.js', '../data/survey-field.js', '../data/sonor-pdf-luxury.js', '../data/fonts/gilroy-extrabold.otf', '../data/fonts/gilroy-regular.otf', '../data/fonts/gilroy-ultralight.otf', '../data/cedia-member-stacked.png', '../data/survey-cover.jpg', '../data/favicon.svg'];
