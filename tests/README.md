@@ -19,3 +19,4 @@ All tests use the Bungalow Trial test project (`ce20bee2-…`, `metadata.is_test
 | v12.mjs | v0.7.0 field chrome: bars, finder search/filters, context strip per tool, More/Survey/page menus, saving sheet, Finish flow, Focus mode |
 | ipad.mjs | v0.9.0: iPad landscape / portrait / iPhone viewports — scrollHeight == innerHeight (no page scroll), bar heights, screenshots |
 | v13.mjs | v0.9.1: two devices on one survey — marks + stroke + new page arrive on the second within seconds (realtime) |
+| v14.mjs | v0.10.0: Received photos sheet (pre-visit · from · via · notes) → credited notes page + categorised photo pages, badges, PDF labels |

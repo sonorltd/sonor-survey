@@ -51,6 +51,9 @@ window.SurveyPdf = (function () {
     var g = pd(String(m.glyph || '?').slice(0, 4)), sz = r * 0.82, w = F.b.widthOfTextAtSize(g, sz);
     P.text(g, cx - w / 2, cy - sz * 0.56, sz, F.b, lum(c) > 150 ? [11, 26, 34] : WHITE);
   }
+  var CATS = { 'pre-visit': 'Pre-visit', received: 'Received', existing: 'Existing' };
+  function catOf(r) { return (r.metadata || {}).category || 'survey'; }
+  function creditOf(r) { var c = (r.metadata || {}).credit || {}; return [c.from, c.via].filter(Boolean).join(' · '); }
   function tagPill(P, F, tag, x, top) { var sz = 7, w = F.b.widthOfTextAtSize(tag, sz) + 8; P.rect(x, top, w, 11, DARK); P.text(tag, x + 4, top + 1.6, sz, F.b, WHITE); return w; }
 
   // ── analysis: tags, counts, cross-links ──
@@ -133,7 +136,8 @@ window.SurveyPdf = (function () {
       var counts = { notes: 0, plans: 0, photos: 0, checklists: 0 }, pinned = Object.keys(A.pinnedBy).length;
       pages.forEach(function (p) { var k = p.row.kind; counts[k === 'plan' ? 'plans' : k === 'photo' ? 'photos' : k === 'checklist' ? 'checklists' : 'notes']++; });
       var rowsL = [['Project', pd(m.project.name)], ['Reference', pd(m.project.ref)], ['Address', pd([m.project.address, m.project.postcode].filter(Boolean).join(', '))], ['Client', pd(m.project.client_name)]];
-      var rowsR = [['Session', pd(m.session.title)], ['Started', fmtDate(m.session.started_at)], ['Engineer', pd(m.engineer || m.session.engineer)], ['Pages', counts.notes + ' notes · ' + counts.plans + ' plan · ' + counts.photos + ' photo (' + pinned + ' pinned) · ' + counts.checklists + ' checklist']];
+      var catCounts = {}; pages.forEach(function (p) { if (p.row.kind === 'photo' && catOf(p.row) !== 'survey') catCounts[catOf(p.row)] = (catCounts[catOf(p.row)] || 0) + 1; }); var catTxt = Object.keys(catCounts).map(function (k) { return catCounts[k] + ' ' + (CATS[k] || k).toLowerCase(); }).join(', ');
+      var rowsR = [['Session', pd(m.session.title)], ['Started', fmtDate(m.session.started_at)], ['Engineer', pd(m.engineer || m.session.engineer)], ['Pages', counts.notes + ' notes · ' + counts.plans + ' plan · ' + counts.photos + ' photo (' + pinned + ' pinned' + (catTxt ? ', ' + catTxt : '') + ') · ' + counts.checklists + ' checklist']];
       var y1 = lx.specRows(P, F, rowsL, M, y + 6, W / 2 - 12), y2 = lx.specRows(P, F, rowsR, M + W / 2 + 12, y + 6, W / 2 - 12);
       y = Math.max(y1, y2) + 14;
       // device schedule by floor
@@ -179,6 +183,7 @@ window.SurveyPdf = (function () {
         if (y + 20 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
         var r = p.row, lab = (r.title || (r.kind === 'plan' ? 'Plan — ' + (r.floor_code || '') : r.kind === 'checklist' ? ((r.metadata.checklist || {}).name || 'Checklist') : r.kind.charAt(0).toUpperCase() + r.kind.slice(1) + ' page'));
         if (r.kind === 'photo' && A.tag[r.id]) lab = A.tag[r.id] + ' · ' + lab;
+        if (catOf(r) !== 'survey') meta = [CATS[catOf(r)] || catOf(r), creditOf(r), meta].filter(Boolean).join(' · ');
         var meta = [r.floor_code, r.room].filter(Boolean).join(' · ');
         if (r.kind === 'checklist') { var pr = window.SurveyChecklist.progress(r.metadata.checklist); meta = (meta ? meta + ' · ' : '') + pr.done + '/' + pr.total + ' complete'; }
         if (p.model && (p.model.marks || []).length) { var li = legendItems(p.model.marks), nd = li.reduce(function (s, it) { return s + (it.m.kind === 'photo' ? 0 : it.n); }, 0), np = (A.thumbsFor[r.id] || []).length; meta = [meta, nd ? nd + ' devices' : '', np ? np + ' photos' : ''].filter(Boolean).join(' · '); }
@@ -192,10 +197,10 @@ window.SurveyPdf = (function () {
       for (var i = 0; i < pages.length; i++) {
         var p = pages[i], r = p.row;
         if (r.kind === 'checklist') { state.pageNo[r.id] = state.n + 1; await checklistPages(r); continue; }
-        var label = (r.kind === 'plan' ? 'PLAN' : r.kind === 'photo' ? 'PHOTO' : 'NOTES');
+        var label = (r.kind === 'plan' ? 'PLAN' : r.kind === 'photo' ? ((catOf(r) !== 'survey' ? (CATS[catOf(r)] || catOf(r)).toUpperCase() + ' ' : '') + 'PHOTO') : (catOf(r) !== 'survey' ? (CATS[catOf(r)] || catOf(r)).toUpperCase() + ' NOTES' : 'NOTES'));
         var PP = newPage(label); state.pageNo[r.id] = state.n;
         var title = r.title || (r.kind === 'plan' ? 'Plan — ' + (r.floor_code || '') : r.kind === 'photo' ? 'Site photo' : 'Notes'), sub = [r.floor_code, r.room].filter(Boolean).join(' · ');
-        var tx = M;
+        var tx = M; if (catOf(r) !== 'survey' && creditOf(r)) sub = [sub, 'from ' + creditOf(r)].filter(Boolean).join(' · ');
         if (r.kind === 'photo' && A.tag[r.id]) { tx += tagPill(PP, F, A.tag[r.id], M, 90) + 8; var pb = A.pinnedBy[r.id]; if (pb) { var pl = pb.plan.row; sub = [sub, 'pinned on ' + (pl.title || (pl.kind === 'plan' ? 'Plan — ' + (pl.floor_code || '') : 'Notes')) + (state.pageNo[pl.id] ? ' (p.' + state.pageNo[pl.id] + ')' : '') + (pb.mark && pb.mark.kind !== 'photo' ? ' at ' + (pb.mark.label || pb.mark.code) : '')].filter(Boolean).join(' · '); } }
         PP.text(fit(F.b, title, 18, W - 120 - (tx - M)), tx, 88, 18, F.b, C.INK); if (sub) PP.right(fit(F.r, sub, 9, 300), A4.w - M, 94, 9, F.r, C.MUT);
         var top = 122, maxH = FOOT - top, maxW = W;
@@ -265,5 +270,5 @@ window.SurveyPdf = (function () {
     return doc.save();
   }
   function download(bytes, name) { var b = new Blob([bytes], { type: 'application/pdf' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(u); }, 4000); }
-  return { report: report, download: download, VERSION: '0.8.0' };
+  return { report: report, download: download, VERSION: '0.10.0' };
 })();

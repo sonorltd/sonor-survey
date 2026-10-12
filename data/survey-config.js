@@ -2,7 +2,7 @@
 window.__SURVEY_CONFIG__ = (function () {
   'use strict';
   var CFG = {
-    version: '0.9.1',
+    version: '0.10.0',
     appKey: 'survey',
     buckets: { photos: 'site-photos', plans: 'takeoffs-plans' },
     // Page spaces (page-unit frames). PLAN = the Takeoffs world frame (1400×900 fit, anchored top-left) so a
@@ -68,6 +68,13 @@ window.__SURVEY_CONFIG__ = (function () {
       { pin: 'note',   label: 'Site note',       glyph: 'N',  c: '#4a4a4f', notes_section: 'general', is_rfi: false, hint: 'A drawing note for the takeoff' },
       { pin: 'snag',   label: 'Snag',            glyph: '!',  c: '#c0392b', notes_section: null,      is_rfi: false, hint: 'Defect / outstanding item (snag walk)' },
       { pin: 'dim',    label: 'Measurement',     glyph: 'm',  c: '#2f7d4f', notes_section: 'general', is_rfi: false, hint: 'A dimension taken on site, e.g. "ceiling 2.6 m"' }
+    ],
+    // v0.10.0 PHOTO CATEGORIES — where a photo came from (Bryn: Paul Murphy sent pre-visit photos on WhatsApp). 'survey' = taken on site by us.
+    photoCategories: [
+      { key: 'survey',    label: 'Survey',    short: '',    hint: 'Taken on site during this survey' },
+      { key: 'pre-visit', label: 'Pre-visit', short: 'PRE', hint: 'Sent before the visit — client, contractor, architect' },
+      { key: 'received',  label: 'Received',  short: 'RCV', hint: 'Sent to us after / outside the visit' },
+      { key: 'existing',  label: 'Existing',  short: 'EXG', hint: 'Existing kit / as-found condition' }
     ],
     // v0.6.0 TEXT tool — typed text objects (page units); S / M / L follow the pen width buttons
     textSizes: { S: 22, M: 32, L: 46 },

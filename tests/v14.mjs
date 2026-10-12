@@ -1,0 +1,18 @@
+import { chromium } from 'playwright'; import fs from 'fs';
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+const errs = []; page.on('pageerror', e => errs.push(e.message));
+await page.goto('http://127.0.0.1:8765/APP%20-%20Survey/dashboard/sonor-survey.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'networkidle' }); await page.waitForTimeout(3000);
+await page.click('#svSurveyBtn'); await page.click('#svNew'); await page.waitForTimeout(2000);
+await page.click('#svAdd'); await page.click('[data-add="received"]'); await page.waitForTimeout(200);
+console.log('sheet', await page.evaluate(() => ({ open: !document.querySelector('#svModal').hidden, cats: Array.from(document.querySelectorAll('#rcCat option')).map(o => o.value) })));
+await page.fill('#rcFrom', 'Paul Murphy'); await page.selectOption('#rcVia', 'WhatsApp'); await page.fill('#rcNotes', 'Hi Bryn — loft hatch is in the back bedroom.\nCeiling void about 300mm. Fuse board in the garage.');
+await page.click('#rcGo'); await page.waitForTimeout(200);
+const mk = (label, col) => page.evaluate(async ([label, col]) => { const c = document.createElement('canvas'); c.width = 1200; c.height = 900; const x = c.getContext('2d'); x.fillStyle = col; x.fillRect(0, 0, 1200, 900); x.fillStyle = '#fff'; x.font = 'bold 80px sans-serif'; x.fillText(label, 100, 450); const b = await new Promise(r => c.toBlob(r, 'image/jpeg', .85)); return Array.from(new Uint8Array(await b.arrayBuffer())); }, [label, col]);
+await page.setInputFiles('#svPhotoLib', [{ name: 'wa1.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(await mk('LOFT HATCH', '#5a6a7a')) }, { name: 'wa2.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(await mk('FUSE BOARD', '#7a5a4a')) }]); await page.waitForTimeout(4000);
+const st = await page.evaluate(() => ({ pages: SurveyApp.state.pages.map(p => [p.kind, p.title, (p.metadata || {}).category, ((p.metadata || {}).credit || {}).from, p.ink.objects && p.ink.objects.length]), badges: Array.from(document.querySelectorAll('.sv-thumb-cat')).map(e => e.textContent), cat: document.querySelector('#svPhotoCat').value, from: document.querySelector('#svPhotoFrom').value, catHidden: document.querySelector('#svPhotoCat').hidden }));
+console.log(JSON.stringify(st));
+await page.screenshot({ path: 'shot-v14.png' });
+const pdf = await page.evaluate(async () => { const pages = []; for (const p of SurveyApp.state.pages) pages.push({ row: p, model: p.kind === 'checklist' ? null : await SurveyApp.pageModel(p) }); const bytes = await SurveyPdf.report({ project: { id: SurveyApp.state.pid, name: 'Bungalow Trial', ref: 'SON-2026-BGTRL' }, session: SurveyApp.state.session, pages, engineer: 'Bryn' }); return Array.from(bytes); });
+fs.writeFileSync('report-v14.pdf', Buffer.from(pdf)); console.log('pdf', pdf.length, 'errors', errs);
+await browser.close();

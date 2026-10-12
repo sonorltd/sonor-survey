@@ -141,16 +141,39 @@
     body.appendChild(blank);
     openModal('Checklist — pick a template', body);
   }
-  async function addPhotoPage(file, pin) {
-    if (!file) return;
+  async function addPhotoPage(file, pin, extra) {   // extra: { category, credit:{from, via}, title }
+    if (!file) return; extra = extra || {};
     var ph = await window.SurveyPlan.preparePhoto(file, CFG.spaces.photoMax, CFG.photoJpegQuality);
     var id = window.SurveyStore.uuid();
     if (!S.session) await newSession();
     var path = window.SurveyStore.photoPath(S.pid, S.session.id, id);
     await window.SurveyStore.blobSet('photo:' + id, ph.blob);
-    var meta = { w: ph.w, h: ph.h, bytes: ph.blob.size }; if (pin) meta.plan_pin = pin;
-    var row = await addPage('photo', { id: id, photo_path: path, title: 'Photo ' + (S.pages.filter(function (p) { return p.kind === 'photo'; }).length + 1), floor_code: pin ? pin.floor_code : undefined, ink: { v: 1, space: { w: ph.w, h: ph.h }, strokes: [], objects: [] }, metadata: meta });
+    var meta = { w: ph.w, h: ph.h, bytes: ph.blob.size }; if (pin) meta.plan_pin = pin; if (extra.category && extra.category !== 'survey') meta.category = extra.category; if (extra.credit) meta.credit = extra.credit;
+    var catDef = (CFG.photoCategories || []).find(function (c) { return c.key === (extra.category || 'survey'); }), nSame = S.pages.filter(function (p) { return p.kind === 'photo' && ((p.metadata || {}).category || 'survey') === (extra.category || 'survey'); }).length + 1;
+    var row = await addPage('photo', { id: id, photo_path: path, title: extra.title || ((catDef && catDef.short ? catDef.label + ' photo ' : 'Photo ') + nSame), floor_code: pin ? pin.floor_code : undefined, ink: { v: 1, space: { w: ph.w, h: ph.h }, strokes: [], objects: [] }, metadata: meta });
     await window.SurveyStore.stashPhoto(S.pid, S.session.id, id, ph.blob);
+    return row;
+  }
+  // v0.10.0 — RECEIVED / PRE-VISIT photos: one sheet (category · from · via) then the library picker; every page carries the credit
+  function openReceivedSheet() {
+    if (!S.pid) return toast('Pick a project first');
+    var body = document.createElement('div'); body.className = 'sv-recv';
+    var last = {}; try { last = JSON.parse(localStorage.getItem('sonor_survey_recv') || '{}'); } catch (e) { }
+    body.innerHTML = '<label>Category<select id="rcCat">' + (CFG.photoCategories || []).filter(function (c) { return c.key !== 'survey'; }).map(function (c) { return '<option value="' + c.key + '"' + (c.key === (last.category || 'pre-visit') ? ' selected' : '') + '>' + esc(c.label) + ' — ' + esc(c.hint) + '</option>'; }).join('') + '</select></label>' +
+      '<label>From<input id="rcFrom" placeholder="Who sent them (e.g. Paul Murphy)" value="' + esc(last.from || '') + '"></label>' +
+      '<label>Via<select id="rcVia">' + ['WhatsApp', 'Email', 'Text', 'AirDrop', 'Other'].map(function (v) { return '<option' + (v === (last.via || 'WhatsApp') ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
+      '<label>Notes they sent (paste the message)<textarea id="rcNotes" rows="4" placeholder="Anything they wrote with the photos — becomes a notes page in this survey, credited to them"></textarea></label>' +
+      '<div class="sv-pin-actions"><span class="muted">Pick the photos next — one page each, titled "Pre-visit photo 1…", credited to the sender.</span><button type="button" class="btn" id="rcNotesOnly" title="Just the message, no photos">Save notes only</button><button type="button" class="btn btn-primary" id="rcGo">Choose photos…</button></div>';
+    $('#rcNotesOnly', body).onclick = async function () { var o = { category: $('#rcCat', body).value, from: $('#rcFrom', body).value.trim(), via: $('#rcVia', body).value, notes: $('#rcNotes', body).value.trim() }; if (!o.notes) return toast('Paste their message first'); closeModal(); if (!S.session) await newSession(); await addReceivedNotes(o); };
+    $('#rcGo', body).onclick = function () { var o = { category: $('#rcCat', body).value, from: $('#rcFrom', body).value.trim(), via: $('#rcVia', body).value, notes: $('#rcNotes', body).value.trim() }; try { localStorage.setItem('sonor_survey_recv', JSON.stringify(o)); } catch (e) { } S.pendingReceived = o; closeModal(); $('#svPhotoLib').click(); };
+    openModal('Received photos', body); setTimeout(function () { $('#rcFrom', body).focus(); }, 30);
+  }
+  // the sender's message → a NOTES page (blank paper + one text object), credited in the title and in metadata, so it prints in the report and can be marked up
+  async function addReceivedNotes(rc) {
+    var cd = (CFG.photoCategories || []).find(function (c) { return c.key === rc.category; }) || { label: 'Received' };
+    var title = cd.label + ' notes' + (rc.from ? ' — ' + rc.from : '') + (rc.via ? ' (' + rc.via + ')' : '');
+    var sp = CFG.spaces.note, size = CFG.textSizes.M, lines = rc.notes.split(/\r?\n/).length;
+    var row = await addPage('blank', { title: title, metadata: { category: rc.category, credit: { from: rc.from || null, via: rc.via || null }, received_notes: true }, ink: { v: 1, space: sp, strokes: [], marks: [], objects: [{ id: 't_' + window.SurveyStore.uuid().replace(/-/g, '').slice(0, 12), kind: 'text', text: rc.notes, size: size, c: '#141414', x: 60, y: 60, w: sp.w - 120, h: Math.round(lines * size * 1.25), t: Date.now() }] } });
     return row;
   }
   // image dropped / pasted / inserted → an OBJECT on the current page (or a new blank page if none)
@@ -187,7 +210,7 @@
   function refreshTags() {
     var t = tags(); S.tags = t;
     if (ink && ink.setLabels) ink.setLabels(t.tag);
-    $$('#svPages .sv-thumb').forEach(function (el) { var p = S.pages.find(function (x) { return x.id === el.dataset.id; }); if (!p) return; var tg = $('.sv-thumb-tag', el); if (p.kind === 'photo' && t.tag[p.id]) { if (!tg) { tg = document.createElement('span'); tg.className = 'sv-thumb-tag'; $('.sv-thumb-img', el).appendChild(tg); } tg.textContent = t.tag[p.id]; } else if (tg) tg.remove(); });
+    $$('#svPages .sv-thumb').forEach(function (el) { var p = S.pages.find(function (x) { return x.id === el.dataset.id; }); if (!p) return; var cd = (CFG.photoCategories || []).find(function (c) { return c.key === ((p.metadata || {}).category || 'survey'); }), cb = $('.sv-thumb-cat', el); if (p.kind === 'photo' && cd && cd.short) { if (!cb) { cb = document.createElement('span'); cb.className = 'sv-thumb-cat'; $('.sv-thumb-img', el).appendChild(cb); } cb.textContent = cd.short; } else if (cb) cb.remove(); var tg = $('.sv-thumb-tag', el); if (p.kind === 'photo' && t.tag[p.id]) { if (!tg) { tg = document.createElement('span'); tg.className = 'sv-thumb-tag'; $('.sv-thumb-img', el).appendChild(tg); } tg.textContent = t.tag[p.id]; } else if (tg) tg.remove(); });
     if (S.page) renderPinChip();
     return t;
   }
@@ -333,6 +356,8 @@
     fl.value = p.floor_code || ''; fl.disabled = p.kind === 'plan';
     renderPinChip();
     var isPhoto = p.kind === 'photo'; $('#svPhotoRetake').hidden = !isPhoto; $('#svPhotoChange').hidden = !isPhoto;
+    var pc2 = $('#svPhotoCat'), pf = $('#svPhotoFrom'); pc2.hidden = !isPhoto; pf.hidden = !isPhoto;
+    if (isPhoto) { if (!pc2.options.length) (CFG.photoCategories || []).forEach(function (c) { var o = document.createElement('option'); o.value = c.key; o.textContent = c.label; o.title = c.hint; pc2.appendChild(o); }); pc2.value = (p.metadata || {}).category || 'survey'; var cr = (p.metadata || {}).credit || {}; pf.value = [cr.from, cr.via].filter(Boolean).join(' · '); }
     if (!S.floors && S.pid) window.SurveyPlan.listFloors(supa, S.pid).then(function (f) { S.floors = f; if (S.page === p) renderPageMeta(); });
   }
   function renderPinChip() {
@@ -349,7 +374,12 @@
     if (!S.page) return;
     var patch = { title: $('#svTitle').value.trim() || null, room: $('#svRoom').value.trim() || null };
     if (S.page.kind !== 'plan') patch.floor_code = $('#svFloor').value || null;
-    var changed = Object.keys(patch).some(function (k) { return (S.page[k] || null) !== patch[k]; }); if (!changed) return;
+    if (S.page.kind === 'photo') {   // v0.10.0 category + credit live in metadata (merge, never replace)
+      var cat = $('#svPhotoCat').value || 'survey', raw = $('#svPhotoFrom').value.trim(), parts = raw.split(/\s*[·|,]\s*/), credit = raw ? { from: parts[0] || null, via: parts[1] || null } : null;
+      var meta = Object.assign({}, S.page.metadata || {}); if (cat === 'survey') delete meta.category; else meta.category = cat; if (credit) meta.credit = credit; else delete meta.credit;
+      if (JSON.stringify(meta) !== JSON.stringify(S.page.metadata || {})) patch.metadata = meta;
+    }
+    var changed = Object.keys(patch).some(function (k) { return k === 'metadata' || (S.page[k] || null) !== patch[k]; }); if (!changed) return;
     Object.assign(S.page, patch); window.SurveyStore.updatePage(S.pid, S.session.id, S.page.id, patch); renderStrip();
   }
   async function hidePage() {
@@ -508,7 +538,7 @@
     $('#svPortrait').onclick = function (e) { e.stopPropagation(); S.portrait = !S.portrait; try { localStorage.setItem('sonor_survey_portrait', S.portrait ? '1' : '0'); } catch (x) { } $('#svPortrait').classList.toggle('active', S.portrait); $('#svPortrait').textContent = S.portrait ? '▯ Portrait pages' : '▭ Landscape pages'; };
     $('#svPortrait').textContent = S.portrait ? '▯ Portrait pages' : '▭ Landscape pages';
     $$('#svAddMenu [data-add]').forEach(function (b) {
-      b.onclick = function () { $('#svAddMenu').hidden = true; var k = b.dataset.add; if (k === 'plan') addPlanPage(); else if (k === 'checklist') addChecklistPage(); else if (k === 'photo') $('#svPhotoIn').click(); else if (k === 'photo-lib') $('#svPhotoLib').click(); else if (k === 'image') $('#svImageIn').click(); else addPage(k); };
+      b.onclick = function () { $('#svAddMenu').hidden = true; var k = b.dataset.add; if (k === 'plan') addPlanPage(); else if (k === 'checklist') addChecklistPage(); else if (k === 'photo') $('#svPhotoIn').click(); else if (k === 'photo-lib') { S.pendingReceived = null; $('#svPhotoLib').click(); } else if (k === 'received') openReceivedSheet(); else if (k === 'image') $('#svImageIn').click(); else addPage(k); };
     });
     function photoPicked(f) { var rid = S.pendingReplace; S.pendingReplace = null; var mid = S.pendingPhotoMark; S.pendingPhotoMark = null; if (rid) { if (f) replacePhoto(rid, f); } else if (mid) { if (f) photoAtMark(f, mid); else { var mk0 = (ink.getPage().marks || []).find(function (m) { return m.id === mid; }); if (mk0 && mk0.kind === 'photo' && !mk0.photo_page_id) ink.removeMark(mid); } } else addPhotoPage(f); }
     $('#svPhotoIn').onchange = function () { var f = this.files[0]; this.value = ''; photoPicked(f); };
@@ -517,9 +547,9 @@
     $('#svPhotoRetake').onclick = function () { if (!S.page || S.page.kind !== 'photo') return; S.pendingReplace = S.page.id; $('#svPhotoIn').click(); };
     $('#svPhotoChange').onclick = function () { if (!S.page || S.page.kind !== 'photo') return; S.pendingReplace = S.page.id; $('#svPhotoPick').click(); };
     $('#svMarkOpen').onclick = function () { var mk = ink.selectedMark(); if (mk && mk.photo_page_id) openPage(mk.photo_page_id); };
-    $('#svPhotoLib').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await addPhotoPage(fs[i]); })(); };
+    $('#svPhotoLib').onchange = function () { var fs = Array.from(this.files); this.value = ''; var rc = S.pendingReceived; S.pendingReceived = null; (async function () { if (!S.session) await newSession(); if (rc && rc.notes) await addReceivedNotes(rc); for (var i = 0; i < fs.length; i++) await addPhotoPage(fs[i], null, rc ? { category: rc.category, credit: { from: rc.from || null, via: rc.via || null } } : null); if (rc) toast(fs.length + ' ' + rc.category + ' photo' + (fs.length === 1 ? '' : 's') + (rc.from ? ' from ' + rc.from : '')); })(); };
     $('#svImageIn').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await insertImage(fs[i]); })(); };
-    ['svTitle', 'svRoom'].forEach(function (id) { $('#' + id).onchange = savePageMeta; $('#' + id).onblur = savePageMeta; });
+    ['svTitle', 'svRoom', 'svPhotoCat', 'svPhotoFrom'].forEach(function (id) { $('#' + id).onchange = savePageMeta; $('#' + id).onblur = savePageMeta; });
     $('#svFloor').onchange = savePageMeta;
     $('#svHistory').onclick = showHistory;
     $('#svRemove').onclick = function () { if (!S.page) return; if ($('#svRemove').dataset.armed) { delete $('#svRemove').dataset.armed; $('#svRemove').textContent = 'Remove page'; hidePage(); } else { $('#svRemove').dataset.armed = '1'; $('#svRemove').textContent = 'Remove — sure?'; setTimeout(function () { delete $('#svRemove').dataset.armed; $('#svRemove').textContent = 'Remove page'; }, 6000); } };

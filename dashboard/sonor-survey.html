@@ -70,7 +70,9 @@ html { overflow: hidden; height: 100%; }
 .sv-stage { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; position: relative; }
 .sv-meta { display: flex; gap: 8px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
 .sv-meta input, .sv-meta select { font: inherit; font-size: 12.5px; color: var(--text-primary); background: var(--card); border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; color-scheme: dark; }
-#svTitle { flex: 1 1 200px; min-width: 120px; } #svRoom { width: 150px; }
+#svTitle { flex: 1 1 200px; min-width: 120px; } #svRoom { width: 150px; } #svPhotoFrom { width: 210px; } #svPhotoCat[hidden], #svPhotoFrom[hidden] { display: none; }
+.sv-thumb-cat { position: absolute; right: 4px; top: 4px; background: #d08a1a; color: #1a1814; font: 700 9px/1 'DM Sans', system-ui, sans-serif; padding: 3px 5px; border-radius: 4px; pointer-events: none; }
+.sv-recv { display: flex; flex-direction: column; gap: 8px; } .sv-recv label { font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); display: flex; flex-direction: column; gap: 4px; } .sv-recv input, .sv-recv select, .sv-recv textarea { font: inherit; font-size: 14px; min-height: 40px; color: var(--text-primary); background: var(--body); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color-scheme: dark; }
 .sv-thumb-img { position: relative; } .sv-thumb-tag { position: absolute; left: 4px; top: 4px; background: #1C1C1E; color: #fff; font: 700 9.5px/1 'DM Sans', system-ui, sans-serif; padding: 3px 5px; border-radius: 4px; border: 1px solid rgba(255,255,255,.75); pointer-events: none; }
 .sv-canvas { flex: 1 1 auto; position: relative; overflow: hidden; background: var(--bg-0, var(--body)); background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 22%, transparent) 1px, transparent 1px); background-size: 22px 22px; touch-action: none; cursor: crosshair; }
 .sv-canvas[data-tool="pan"] { cursor: grab; } .sv-canvas[data-tool="eraser"] { cursor: cell; }
@@ -287,6 +289,8 @@ body.sv-focus .sv-focus-chip { display: flex; }
       <select id="svFloor" aria-label="Floor"><option value="">Floor</option></select>
       <input id="svRoom" placeholder="Room" aria-label="Room">
       <button class="btn btn-sm" id="svPinChip" type="button" hidden title="Pinned on the plan — tap to jump there"></button>
+      <select id="svPhotoCat" aria-label="Photo category" hidden title="Where this photo came from"></select>
+      <input id="svPhotoFrom" placeholder="From (e.g. Paul Murphy · WhatsApp)" aria-label="Photo credit" hidden>
       <span class="sv-grow"></span>
       <span class="sv-menu-wrap"><button class="btn btn-sm" id="svPageBtn" type="button" title="Page actions">⋯</button>
         <div class="sv-menu" id="svPageMenu" hidden>
@@ -319,6 +323,7 @@ body.sv-focus .sv-focus-chip { display: flex; }
   <button class="btn" type="button" data-add="plan">🗺 Plan (Takeoffs floor)</button>
   <button class="btn" type="button" data-add="photo">📷 Take photo</button>
   <button class="btn" type="button" data-add="photo-lib">🖼 Photo pages from library</button>
+  <button class="btn" type="button" data-add="received">📥 Received photos (pre-visit)…</button>
   <button class="btn" type="button" data-add="image">🖼 Insert image on this page</button>
   <button class="btn" type="button" data-add="checklist">☑ Checklist / questions…</button>
   <button class="btn" type="button" id="svPortrait">▭ Landscape pages</button>
@@ -337,7 +342,7 @@ body.sv-focus .sv-focus-chip { display: flex; }
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.9.1';
+  const APP_VERSION = '0.10.0';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>
