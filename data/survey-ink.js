@@ -228,7 +228,7 @@ window.SurveyInk = (function () {
       if (e.pointerType === 'touch') {
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (pointers.size === 2) {
-          if (cur && cur.byTouch) { cur = null; clear(lvx); } drag = null;
+          if (cur && cur.byTouch) { cur = null; clear(lvx); } drag = null; mdrag = null;
           var a = Array.from(pointers.values()); pinch = { d: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), cx: (a[0].x + a[1].x) / 2, cy: (a[0].y + a[1].y) / 2, s: view.s, tx: view.tx, ty: view.ty };
           panStart = null; return;
         }
@@ -273,19 +273,35 @@ window.SurveyInk = (function () {
         renderBg(); renderLive(); return;
       }
       if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); render(); return; }
-      if (cur && cur.penId === e.pointerId) { move(e); e.preventDefault(); }
+      if (cur && cur.penId === e.pointerId) { move(e); e.preventDefault(); return; }
+      if (tool === 'select' && e.pointerType === 'mouse' && !e.buttons) hoverCursor(toPage(e.clientX, e.clientY));
     }
+    function hoverCursor(pt) {   // Mac: the cursor says what a click will do (resize corner · move · grab-to-pan)
+      var h = handleAt(pt), c = 'default';
+      if (h) c = (h.k === 'nw' || h.k === 'se') ? 'nwse-resize' : 'nesw-resize';
+      else if ((SI && SI.markAt(page.marks, pt)) || objectAt(pt)) c = 'move';
+      else c = 'grab';
+      if (host.style.cursor !== c) host.style.cursor = c;
+    }
+    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; pointers.clear(); clear(lvx); renderLive(); }
     function onUp(e) {
       if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; }
-      if (mdrag && mdrag.id === e.pointerId) { var mm = selMarkObj(); if (mm) { var mpt = toPage(e.clientX, e.clientY); mm.x = r2(mdrag.orig.x + mpt[0] - mdrag.start[0]); mm.y = r2(mdrag.orig.y + mpt[1] - mdrag.start[1]); renderBg(); renderLive(); } return; }
-      if (mdrag && mdrag.id === e.pointerId) { var mk2 = selMarkObj(), mg = mdrag.orig; mdrag = null; if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); } }
+      if (mdrag && mdrag.id === e.pointerId) {   // v0.4.3: one block — the old early `return` never cleared mdrag, so the first mark grabbed stayed glued to the pointer and nothing else could be selected
+        var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start; mdrag = null;
+        if (mk2) { var mpt = toPage(e.clientX, e.clientY); mk2.x = r2(Math.max(0, Math.min(page.space.w, mg.x + mpt[0] - ms[0]))); mk2.y = r2(Math.max(0, Math.min(page.space.h, mg.y + mpt[1] - ms[1]))); }
+        if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); }
+        renderBg(); renderLive(); return;
+      }
       if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
       if (panStart) panStart = null;
       if (cur && cur.penId === e.pointerId) end();
       if (cur && cur.eraser) end();
     }
     host.addEventListener('pointerdown', onDown); host.addEventListener('pointermove', onMove);
-    host.addEventListener('pointerup', onUp); host.addEventListener('pointercancel', onUp);
+    host.addEventListener('pointerup', onUp);
+    host.addEventListener('pointercancel', function (e) { onUp(e); if (cur) end(); resetGestures(); });   // a cancelled gesture (palm, OS swipe, tab switch) never leaves a half-drag armed
+    window.addEventListener('blur', function () { if (cur) end(); resetGestures(); });
+    host.addEventListener('pointerleave', function () { if (tool === 'select') host.style.cursor = ''; });
     host.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     host.addEventListener('wheel', function (e) {
       e.preventDefault();
@@ -323,7 +339,8 @@ window.SurveyInk = (function () {
     return {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
       getPage: function () { return page; },
-      setTool: function (t) { tool = t; host.dataset.tool = t; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
+      setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
+      clearSelection: function () { sel = null; selMark = null; drag = null; mdrag = null; renderLive(); },
       setMarkDef: function (d) { markDef = d; selMark = null; renderLive(); }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark, updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
       setColour: function (c) { colour = c; }, setWidth: function (w) { width = w; },
       fingerDraws: function (b) { fingerDraw = !!b; },
@@ -335,5 +352,5 @@ window.SurveyInk = (function () {
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.4.2' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.4.3' };
 })();

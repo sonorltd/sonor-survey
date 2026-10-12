@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.4.2 — PDF report + thumbnails render device/photo marks exactly as in-app, device legend under plan pages)
+/* Sonor Survey — APP (app-local, v0.4.3 — Select tool fixed (mark drag released on pointer-up), hover cursors, Esc clears selection; report img regression fixed)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */
@@ -390,6 +390,7 @@
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? ink.redo() : ink.undo(); }
       else if (e.key === 'p') setTool('pen'); else if (e.key === 'h') setTool('hl'); else if (e.key === 'e') setTool('eraser'); else if (e.key === 'v') setTool('select'); else if (e.key === ' ') { setTool('pan'); }
       else if (e.key === 'f') ink.fit();
+      else if (e.key === 'Escape') { ink.clearSelection && ink.clearSelection(); refreshMarkUi(); }
       else if (e.key === 'm') setTool('mark'); else if (e.key === 'c') setTool('photopin');
       else if ((e.key === 'Backspace' || e.key === 'Delete') && /select|mark/.test(ink.getTool()) && (ink.selected() || ink.selectedMark())) { e.preventDefault(); ink.removeSelected(); refreshMarkUi(); }
     });

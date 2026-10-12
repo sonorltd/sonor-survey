@@ -1,4 +1,4 @@
-/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.4.2)
+/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.4.3)
  * The luxury proposal chrome (root master data/sonor-pdf-luxury.js — cover · pageHead brand:'large' · pageFoot ·
  * sectionHead · specRows) on pdf-lib. Page images come from SurveyInk.renderPage (paper + photos + ink) so the PDF
  * is exactly what was on the iPad. One A4 portrait per survey page; checklists as tick tables (paginated).
@@ -68,7 +68,8 @@ window.SurveyPdf = (function () {
       var top = 122, maxH = A4.h - 70 - top, maxW = W;
       if (p.model) {
         var sp = p.model.space, px = sp.w >= sp.h ? 1800 : 1400;
-        var cv = window.SurveyInk.renderPage(p.model, null, px, { minMark: 24 });   // marks hold a readable print size var img = await canvasJpg(doc, cv, 0.88);
+        var cv = window.SurveyInk.renderPage(p.model, null, px, { minMark: 24 });   /* marks hold a readable print size */
+        var img = await canvasJpg(doc, cv, 0.88);
         var sc = Math.min(maxW / sp.w, maxH / sp.h), dw = sp.w * sc, dh = sp.h * sc, dx = M + (maxW - dw) / 2;
         PP.rectB(dx - 1, top - 1, dw + 2, dh + 2, C.LINE, 0.6); PP.image(img, dx, top, dw, dh, 1);
         // v0.4.2 — device legend under the page: "6× Ceiling speaker · 2× TV point · 3 photos"
