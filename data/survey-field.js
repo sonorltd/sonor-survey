@@ -135,8 +135,16 @@
 
   // ---------- boot ----------
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  // ---------- v0.9.0 viewport — iOS Safari / home-screen: the shell is position:fixed and follows the VISUAL viewport
+  // (toolbars, the keyboard, rotation), so the page + tool bar are always on screen and nothing ever needs scrolling
+  function fitViewport() { var vv = window.visualViewport, h = vv ? vv.height : window.innerHeight; document.body.style.height = Math.round(h) + 'px'; if (vv) document.body.style.top = Math.round(vv.offsetTop) + 'px'; }
+  function phone() { return window.matchMedia('(max-width: 640px)').matches; }
   function boot() {
     if (!A()) return setTimeout(boot, 50);
+    fitViewport(); window.addEventListener('resize', fitViewport); if (window.visualViewport) { visualViewport.addEventListener('resize', fitViewport); visualViewport.addEventListener('scroll', fitViewport); } window.addEventListener('orientationchange', function () { setTimeout(fitViewport, 300); });
+    document.body.classList.toggle('sv-phone', phone()); window.matchMedia('(max-width: 640px)').addEventListener('change', function (e) { document.body.classList.toggle('sv-phone', e.matches); });
+    // 📷 FAB (phone): straight to the camera → a new photo page in this survey (starts a survey if there is none)
+    var fab = $('#svFab'); if (fab) fab.onclick = async function () { var S = A().state; if (!S.pid) return A().toast('Pick a project first'); if (!S.session) await A().newSession(); A().state.pendingPhotoMark = null; A().state.pendingReplace = null; $('#svPhotoIn').click(); };
     wireMenus();
     $('#svFind').onclick = openFinder;
     $('#svSync').onclick = openSaving;
