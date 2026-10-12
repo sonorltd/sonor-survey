@@ -1,4 +1,4 @@
-/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.5.1)
+/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.6.0 — hi-res page images, service-ordered legends, pins lists + summary)
  * The luxury proposal chrome (root master data/sonor-pdf-luxury.js — cover · pageHead brand:'large' · pageFoot ·
  * sectionHead · specRows) on pdf-lib. Page images come from SurveyInk.renderPage (paper + photos + ink + marks) so the
  * PDF is exactly what was on the iPad. One A4 portrait per survey page; checklists as tick tables (paginated).
@@ -41,6 +41,12 @@ window.SurveyPdf = (function () {
       P.dot(cx, cy - r * 0.35, r * 0.4, WHITE); P.dot(cx, cy - r * 0.35, r * 0.2, DARK);
       return;
     }
+    if (m.kind === 'pin') {   // diamond flag
+      var pc = hex(m.c || '#4a4a4f'), lxx = L();
+      P.page.drawSvgPath('M 0 -' + (r * 1.15).toFixed(2) + ' L ' + (r * 1.15).toFixed(2) + ' 0 L 0 ' + (r * 1.15).toFixed(2) + ' L -' + (r * 1.15).toFixed(2) + ' 0 Z', { x: cx, y: lxx.A4.h - cy, color: lxx.col(pc), borderColor: lxx.col(WHITE), borderWidth: 0.7 });
+      var pg = pd(String(m.glyph || '?').slice(0, 2)), psz = r * 0.95, pw = F.b.widthOfTextAtSize(pg, psz); P.text(pg, cx - pw / 2, cy - psz * 0.56, psz, F.b, lum(pc) > 150 ? [11, 26, 34] : WHITE);
+      return;
+    }
     var c = hex(m.c || '#98989D'); P.dot(cx, cy, r, c, WHITE);
     var g = pd(String(m.glyph || '?').slice(0, 4)), sz = r * 0.82, w = F.b.widthOfTextAtSize(g, sz);
     P.text(g, cx - w / 2, cy - sz * 0.56, sz, F.b, lum(c) > 150 ? [11, 26, 34] : WHITE);
@@ -55,12 +61,15 @@ window.SurveyPdf = (function () {
     var thumbsFor = {}; Object.keys(pinnedBy).forEach(function (pid) { var pl = pinnedBy[pid].plan.row.id; (thumbsFor[pl] = thumbsFor[pl] || []).push(pid); });
     return { byId: byId, tag: t.tag, pinnedBy: pinnedBy, thumbsFor: thumbsFor, photoCount: t.count };
   }
-  function legendItems(marks) {   // [{m, n}] in first-seen order, photo pins last
+  function legendItems(marks) {   // [{m, n}] in SERVICE order (nn, then label); pins are listed separately; photo pins last
     var out = [], idx = {}, photos = 0, ph = null;
-    (marks || []).forEach(function (m) { if (m.kind === 'photo') { photos++; ph = ph || m; return; } var k = m.code || m.label || '?'; if (idx[k] == null) { idx[k] = out.length; out.push({ m: m, n: 0, label: m.label || m.code }); } out[idx[k]].n++; });
+    (marks || []).forEach(function (m) { if (m.kind === 'pin') return; if (m.kind === 'photo') { photos++; ph = ph || m; return; } var k = m.code || m.label || '?'; if (idx[k] == null) { idx[k] = out.length; out.push({ m: m, n: 0, label: m.label || m.code }); } out[idx[k]].n++; });
+    out.sort(function (a, b) { return String(a.m.nn || '99').localeCompare(String(b.m.nn || '99')) || String(a.label).localeCompare(String(b.label)); });
     if (photos) out.push({ m: ph, n: photos, label: photos === 1 ? 'Photo' : 'Photos' });
     return out;
   }
+  function pinItems(marks) { var PL = (window.SonorInk && window.SonorInk.PIN_LABEL) || {}; var order = ['rfi', 'client', 'note', 'snag', 'dim']; return (marks || []).filter(function (m) { return m.kind === 'pin'; }).sort(function (a, b) { return order.indexOf(a.pin) - order.indexOf(b.pin) || (a.n || 0) - (b.n || 0); }).map(function (m) { return { m: m, label: (PL[m.pin] || 'PIN') + (m.n ? ' ' + m.n : ''), text: m.text || '', to: m.to || '' }; }); }
+  function sortItems(items) { return items.sort(function (a, b) { var pa = a.m.kind === 'photo' ? 1 : 0, pb = b.m.kind === 'photo' ? 1 : 0; return pa - pb || String(a.m.nn || '99').localeCompare(String(b.m.nn || '99')) || String(a.label).localeCompare(String(b.label)); }); }
   function mergeLegend(items, into) { items.forEach(function (it) { var k = it.m.kind === 'photo' ? '__photo' : (it.m.code || it.label); if (!into[k]) into[k] = { m: it.m, n: 0, label: it.label }; into[k].n += it.n; }); }
 
   // ── layout helpers ──
@@ -132,19 +141,34 @@ window.SurveyPdf = (function () {
       if (floors.length) {
         P.tracked('DEVICE SCHEDULE', M, y, 8.5, F.r, C.GOLD, 2.6); y += 18;
         floors.forEach(function (fc) {
-          var items = Object.keys(byFloor[fc]).map(function (k) { return byFloor[fc][k]; }), rows = legendRows(F, items, W - 60);
+          var items = sortItems(Object.keys(byFloor[fc]).map(function (k) { return byFloor[fc][k]; })), rows = legendRows(F, items, W - 60);
           if (y + rows.length * 17 + 8 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
           P.text(fit(F.b, fc, 9.5, 52), M, y, 9.5, F.b, C.INK);
           rows.forEach(function (row) { row.forEach(function (c) { icon(P, F, c.it.m, M + 60 + c.x + 7, y + 5, 6); P.text(c.it._txt, M + 60 + c.x + 18, y, 8.5, F.r, C.INK2); }); y += 17; });
           P.hline(M, A4.w - M, y - 2, C.LINE, 0.4, 0.7); y += 6;
         });
         if (floors.length > 1) {
-          var tItems = Object.keys(all).map(function (k) { return all[k]; }), tRows = legendRows(F, tItems, W - 60);
+          var tItems = sortItems(Object.keys(all).map(function (k) { return all[k]; })), tRows = legendRows(F, tItems, W - 60);
           if (y + tRows.length * 17 + 8 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
           P.text('Total', M, y, 9.5, F.b, C.GOLD);
           tRows.forEach(function (row) { row.forEach(function (c) { icon(P, F, c.it.m, M + 60 + c.x + 7, y + 5, 6); P.text(c.it._txt, M + 60 + c.x + 18, y, 8.5, F.b, C.INK); }); y += 17; });
           y += 6;
         }
+        y += 8;
+      }
+      // v0.6.0 — PINS & RFIs across the survey (page refs are exact after the dry pass)
+      var allPins = []; pages.forEach(function (p) { if (p.model) pinItems(p.model.marks).forEach(function (it) { it.page = p; allPins.push(it); }); });
+      if (allPins.length) {
+        if (y + 40 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
+        P.tracked('PINS & RFIs', M, y, 8.5, F.r, C.GOLD, 2.6); y += 18;
+        allPins.forEach(function (it) {
+          var lines = lx.wrap(pd((it.text || '—') + (it.to ? '  – to ' + it.to : '')), F.r, 9, W - 150).slice(0, 2), h = Math.max(14, lines.length * 11.5 + 4);
+          if (y + h + 4 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
+          icon(P, F, it.m, M + 7, y + 5, 5.5); P.text(it.label, M + 18, y, 9, F.b, C.INK);
+          lines.forEach(function (ln, li) { P.text(ln, M + 80, y + li * 11.5, 9, F.r, C.INK2); });
+          var where = (it.page.row.floor_code || it.page.row.title || '') + (state.pageNo[it.page.row.id] ? ' · p.' + state.pageNo[it.page.row.id] : ''); P.right(fit(F.r, where, 8, 110), A4.w - M, y + 1, 8, F.r, C.MUT);
+          P.hline(M, A4.w - M, y + h - 2, C.LINE, 0.4, 0.7); y += h + 2;
+        });
         y += 8;
       }
       // contents (flows onto continuation summary pages)
@@ -175,12 +199,24 @@ window.SurveyPdf = (function () {
         PP.text(fit(F.b, title, 18, W - 120 - (tx - M)), tx, 88, 18, F.b, C.INK); if (sub) PP.right(fit(F.r, sub, 9, 300), A4.w - M, 94, 9, F.r, C.MUT);
         var top = 122, maxH = FOOT - top, maxW = W;
         if (!p.model) { PP.text('Page could not be rendered (image missing offline).', M, top, 9.5, F.r, C.MUT); foot(PP); continue; }
-        var sp = p.model.space, px = sp.w >= sp.h ? 1800 : 1400, legend = legendItems(p.model.marks), thumbs = (A.thumbsFor[r.id] || []).map(function (pid) { return A.byId[pid]; }).filter(function (t) { return t && t.model; });
-        var reserve = (legend.length ? legendHeight(F, legend, W) + 10 : 0);
+        var sp = p.model.space, px = sp.w >= sp.h ? 2600 : 1900, legend = legendItems(p.model.marks), pins = pinItems(p.model.marks), thumbs = (A.thumbsFor[r.id] || []).map(function (pid) { return A.byId[pid]; }).filter(function (t) { return t && t.model; });
+        var reserve = (legend.length ? legendHeight(F, legend, W) + 10 : 0) + (pins.length ? 14 + Math.min(pins.length, 4) * 13 : 0);
         var sc = Math.min(maxW / sp.w, (maxH - reserve) / sp.h), dw = sp.w * sc, dh = sp.h * sc, dx = M + (maxW - dw) / 2;
         if (!state.dry) { var img = await pageImg(p, px, { minMark: 24 }); PP.rectB(dx - 1, top - 1, dw + 2, dh + 2, C.LINE, 0.6); PP.image(img, dx, top, dw, dh, 1); }
         var y3 = top + dh + 12;
         if (legend.length) y3 = state.dry ? y3 + legendHeight(F, legend, W) : drawLegend(PP, F, legend, M, y3, W);
+        if (pins.length) {   // v0.6.0 — "PINS ON THIS PAGE": RFI 1 — text → to
+          if (y3 + 14 + 13 > FOOT) { foot(PP); PP = newPage(label); PP.text(fit(F.b, title + ' — pins', 14, W), M, 88, 14, F.b, C.INK); y3 = 112; }
+          PP.tracked('PINS ON THIS PAGE', M, y3, 7, F.r, C.GOLD, 2.2); y3 += 14;
+          for (var pi = 0; pi < pins.length; pi++) {
+            var pn = pins[pi], plines = lx.wrap(pd((pn.text || '—') + (pn.to ? '  – to ' + pn.to : '')), F.r, 8.5, W - 80).slice(0, 3), ph = Math.max(13, plines.length * 11 + 3);
+            if (y3 + ph > FOOT) { foot(PP); PP = newPage(label); PP.text(fit(F.b, title + ' — pins (cont.)', 14, W), M, 88, 14, F.b, C.INK); y3 = 112; }
+            icon(PP, F, pn.m, M + 7, y3 + 5, 5.5); PP.text(pn.label, M + 18, y3, 8.5, F.b, C.INK);
+            plines.forEach(function (ln, li) { PP.text(ln, M + 76, y3 + li * 11, 8.5, F.r, C.INK2); });
+            y3 += ph;
+          }
+          y3 += 4;
+        }
         // pinned photo thumbnails — 4 per row, continuation pages as needed
         if (thumbs.length) {
           var gap = 10, tw = (W - gap * 3) / 4, th = 96, cellH = th + 18, col = 0;
@@ -228,5 +264,5 @@ window.SurveyPdf = (function () {
     return doc.save();
   }
   function download(bytes, name) { var b = new Blob([bytes], { type: 'application/pdf' }), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); URL.revokeObjectURL(u); }, 4000); }
-  return { report: report, download: download, VERSION: '0.5.1' };
+  return { report: report, download: download, VERSION: '0.6.0' };
 })();

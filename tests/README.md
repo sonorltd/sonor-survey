@@ -15,3 +15,4 @@ All tests use the Bungalow Trial test project (`ce20bee2-…`, `metadata.is_test
 | v9.mjs | v0.5.0 report: 5 pinned photos → P-tags on plan, icon legend, thumbnail grid, device schedule |
 | tk*.mjs / plan.mjs / thumb.mjs | Takeoffs survey-ink layer against live Pages · plan page load · thumbnails |
 | v10.mjs | v0.5.1: pins on a NOTES page → P-tags in app (labels, thumb badges, pin chip), Retake keeps id/pin/tag, Open P2 button, PDF with permanent cover |
+| v11.mjs | v0.6.0: service-ordered palette, Text tool create/edit, Pins menu → RFI/client sheet + numbering, PDF pins lists, plan_notes mirror |

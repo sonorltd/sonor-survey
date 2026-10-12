@@ -1,8 +1,8 @@
 /* Sonor Survey — app config (static refs only; project data lives in Supabase) */
 window.__SURVEY_CONFIG__ = (function () {
   'use strict';
-  return {
-    version: '0.5.1',
+  var CFG = {
+    version: '0.6.0',
     appKey: 'survey',
     buckets: { photos: 'site-photos', plans: 'takeoffs-plans' },
     // Page spaces (page-unit frames). PLAN = the Takeoffs world frame (1400×900 fit, anchored top-left) so a
@@ -60,9 +60,23 @@ window.__SURVEY_CONFIG__ = (function () {
     ],
     photoMark: { code: 'photo', kind: 'photo', label: 'Photo here', glyph: '📷', nn: null },   // its own tool, never in the devices palette
     extraColours: { '11': '#c0392b' },   // 11 Electrical is a Takeoffs block family, not a Sonor service colour
+    // v0.6.0 PINS — the 📌 menu. Each pin is a numbered flag with text; RFI / client / note pins pull through to Takeoffs
+    // Plan Notes (projects.metadata.plan_notes: section + is_rfi) at the same x/y; snags publish for Tasks (B-530); all in the report.
+    pins: [
+      { pin: 'rfi',    label: 'RFI / query',     glyph: '?',  c: '#d08a1a', notes_section: 'general', is_rfi: true,  hint: 'A question for the architect / client / contractor' },
+      { pin: 'client', label: 'Client comment',  glyph: 'C',  c: '#3A8AA8', notes_section: 'client',  is_rfi: false, hint: 'Something the client / contractor said on site' },
+      { pin: 'note',   label: 'Site note',       glyph: 'N',  c: '#4a4a4f', notes_section: 'general', is_rfi: false, hint: 'A drawing note for the takeoff' },
+      { pin: 'snag',   label: 'Snag',            glyph: '!',  c: '#c0392b', notes_section: null,      is_rfi: false, hint: 'Defect / outstanding item (snag walk)' },
+      { pin: 'dim',    label: 'Measurement',     glyph: 'm',  c: '#2f7d4f', notes_section: 'general', is_rfi: false, hint: 'A dimension taken on site, e.g. "ceiling 2.6 m"' }
+    ],
+    // v0.6.0 TEXT tool — typed text objects (page units); S / M / L follow the pen width buttons
+    textSizes: { S: 22, M: 32, L: 46 },
 
     paper: { line: 36, grid: 25 },
     autosaveMs: 1200,
     photoJpegQuality: 0.86
   };
+  // v0.6.0 — SERVICE ORDER everywhere: the devices palette, legends and schedules all read this list in nn order
+  CFG.marks.sort(function (a, b) { return (a.nn || '99').localeCompare(b.nn || '99'); });
+  return CFG;
 })();

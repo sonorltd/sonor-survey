@@ -192,6 +192,7 @@ window.SurveyInk = (function () {
     function addMark(def, pt) {
       page.marks = page.marks || [];
       var m = { id: uid('m_'), code: def.code, kind: def.kind || 'block', label: def.label, glyph: def.glyph, c: def.c || null, nn: def.nn || null, block_code: def.block_code || null, x: r2(pt[0]), y: r2(pt[1]), t: Date.now() };
+      if (m.kind === 'pin') { m.pin = def.pin; m.n = def.n || null; m.text = def.text || ''; }   // v0.6.0 pins (RFI / snag / client / note / dim)
       page.marks.push(m); selMark = m.id; sel = null;
       undo.push({ type: 'mark-add', mark: m }); redo.length = 0; onChange({ type: 'mark', action: 'add', mark: m }); render(); return m;
     }
@@ -213,7 +214,7 @@ window.SurveyInk = (function () {
     // ---------- input ----------
     host.style.touchAction = 'none';
     function isDrawPointer(e) {
-      if (tool === 'pan' || tool === 'select' || tool === 'mark') return false;
+      if (tool === 'pan' || tool === 'select' || tool === 'mark' || tool === 'text') return false;
       if (e.pointerType === 'pen' || e.pointerType === 'mouse') return true;
       if (e.pointerType === 'touch') return fingerDraw && Date.now() > penActiveUntil && pointers.size <= 1;
       return false;
@@ -278,12 +279,17 @@ window.SurveyInk = (function () {
         if (mp[0] < 0 || mp[1] < 0 || mp[0] > page.space.w || mp[1] > page.space.h) return;
         addMark(markDef, mp); e.preventDefault(); return;
       }
+      if (tool === 'text') {   // v0.6.0 — the app owns the editor: tap on a text object edits it, tap on paper starts a new one
+        var tp = toPage(e.clientX, e.clientY), to = objectAt(tp);
+        if (tp[0] < 0 || tp[1] < 0 || tp[0] > page.space.w || tp[1] > page.space.h) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
+        onChange({ type: 'text-tap', pt: tp, object: (to && to.kind === 'text') ? to : null }); e.preventDefault(); return;
+      }
       if (tool === 'select') {
         var pt = toPage(e.clientX, e.clientY), hitMk = markHit(pt);
         if (hitMk) { selMark = hitMk.id; sel = null; mdrag = { id: e.pointerId, start: pt, orig: { x: hitMk.x, y: hitMk.y } }; renderLive(); e.preventDefault(); return; }
         selMark = null;
         var h = handleAt(pt), o = h ? selObj() : objectAt(pt);
-        if (o) { sel = o.id; drag = { id: e.pointerId, mode: h ? 'resize' : 'move', handle: h && h.k, start: pt, orig: { x: o.x, y: o.y, w: o.w, h: o.h } }; renderLive(); e.preventDefault(); return; }
+        if (o) { sel = o.id; drag = { id: e.pointerId, mode: h ? 'resize' : 'move', handle: h && h.k, start: pt, orig: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }; renderLive(); e.preventDefault(); return; }
         sel = null; renderLive(); panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return;
       }
       if (!isDrawPointer(e)) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
@@ -308,7 +314,8 @@ window.SurveyInk = (function () {
           if (drag.handle === 'se') { nw = Math.max(40, g.w + dx); nh = nw / ar; o.w = r2(nw); o.h = r2(nh); }
           else if (drag.handle === 'sw') { nw = Math.max(40, g.w - dx); nh = nw / ar; o.x = r2(g.x + g.w - nw); o.w = r2(nw); o.h = r2(nh); }
           else if (drag.handle === 'ne') { nw = Math.max(40, g.w + dx); nh = nw / ar; o.y = r2(g.y + g.h - nh); o.w = r2(nw); o.h = r2(nh); }
-          else { nw = Math.max(40, g.w - dx); nh = nw / ar; o.x = r2(g.x + g.w - nw); o.y = r2(g.y + g.h - nh); o.w = r2(nw); o.h = r2(nh); } }
+          else { nw = Math.max(40, g.w - dx); nh = nw / ar; o.x = r2(g.x + g.w - nw); o.y = r2(g.y + g.h - nh); o.w = r2(nw); o.h = r2(nh); }
+          if (o.kind === 'text' && g.size) o.size = Math.max(10, r2(g.size * o.w / g.w)); }   // v0.6.0 text scales with its box
         renderBg(); renderLive(); return;
       }
       if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); render(); return; }
@@ -331,7 +338,7 @@ window.SurveyInk = (function () {
         if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); }
         renderBg(); renderLive(); return;
       }
-      if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
+      if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
       if (panStart) panStart = null;
       if (cur && cur.penId === e.pointerId) end();
       if (cur && cur.eraser) end();
@@ -349,7 +356,7 @@ window.SurveyInk = (function () {
     }, { passive: false });
 
     // ---------- undo / redo ----------
-    function applyObj(o, r) { o.x = r.x; o.y = r.y; o.w = r.w; o.h = r.h; }
+    function applyObj(o, r) { o.x = r.x; o.y = r.y; o.w = r.w; o.h = r.h; if (r.size) o.size = r.size; if (r.text != null) o.text = r.text; }
     function doUndo() {
       var op = undo.pop(); if (!op) return;
       if (op.type === 'add') { var i = page.strokes.indexOf(op.stroke); if (i >= 0) page.strokes.splice(i, 1); onChange({ type: 'erase', ids: [op.stroke.id], undo: true }); }
@@ -379,9 +386,12 @@ window.SurveyInk = (function () {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
       getPage: function () { return page; },
       setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
+      pageToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; }, getScale: function () { return view.s; },
       setLabels: function (l) { labels = l || null; renderBg(); }, getLabels: function () { return labels; },
       clearSelection: function () { sel = null; selMark = null; drag = null; mdrag = null; renderLive(); },
-      setMarkDef: function (d) { markDef = d; selMark = null; renderLive(); }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark, updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
+      setMarkDef: function (d) { markDef = d; selMark = null; renderLive(); }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark,
+      updateObject: function (id, patch) { var o = (page.objects || []).find(function (x) { return x.id === id; }); if (!o) return; var before = { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size, text: o.text }; Object.assign(o, patch); undo.push({ type: 'obj-update', id: o.id, before: before, after: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size, text: o.text } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); render(); },
+      updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
       setColour: function (c) { colour = c; }, setWidth: function (w) { width = w; },
       fingerDraws: function (b) { fingerDraw = !!b; },
       undo: doUndo, redo: doRedo, canUndo: function () { return undo.length > 0; }, canRedo: function () { return redo.length > 0; },
@@ -392,5 +402,5 @@ window.SurveyInk = (function () {
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, photoTags: photoTags, drawTags: drawTags, VERSION: '0.5.1' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, photoTags: photoTags, drawTags: drawTags, VERSION: '0.6.0' };
 })();

@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (app-local, v0.4.0 — ink.objects + ink.marks merged by id like strokes; survey_templates read; summary carries marks_by_floor + photo plan_pins)
+/* Sonor Survey — STORE (v0.6.0 — pins → survey_summary.pins + Takeoffs plan_notes mirror) (app-local, v0.4.0 — ink.objects + ink.marks merged by id like strokes; survey_templates read; summary carries marks_by_floor + photo plan_pins)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -210,24 +210,50 @@ window.SurveyStore = (function () {
   async function publishSummary(pid) {
     if (!status.online) return;
     var s = await supa.from('survey_sessions').select('id,title,kind,status,started_at,ended_at').eq('project_id', pid).order('started_at', { ascending: false });
-    var p = await supa.from('survey_pages').select('id,kind,title,floor_code,room,photo_path,session_id,ink,metadata').eq('project_id', pid);
+    var p = await supa.from('survey_pages').select('id,kind,seq,title,floor_code,room,photo_path,session_id,ink,metadata,plan_ref').eq('project_id', pid);
     if (s.error || p.error) return;
     var pages = p.data.filter(function (x) { return !(x.metadata && x.metadata.hidden); }), photos = pages.filter(function (x) { return x.kind === 'photo' && x.photo_path; });
     var marksByFloor = {};   // v0.4.0 — survey-stage block intents per floor + block_code (Takeoffs B-529 swap source)
-    pages.forEach(function (x) { if (x.kind !== 'plan') return; ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind === 'photo') return; var f = x.floor_code || '?'; marksByFloor[f] = marksByFloor[f] || {}; var k = m.block_code || m.code; marksByFloor[f][k] = (marksByFloor[f][k] || 0) + 1; }); });
+    pages.forEach(function (x) { ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind === 'photo' || m.kind === 'pin') return; var f = x.floor_code || '?'; marksByFloor[f] = marksByFloor[f] || {}; var k = m.block_code || m.code; marksByFloor[f][k] = (marksByFloor[f][k] || 0) + 1; }); });
     var checklists = pages.filter(function (x) { return x.kind === 'checklist'; }).length;
+    // v0.6.0 — PINS: every RFI / client / note / snag / dim pin across the survey, in page order; x/y are page units (= Takeoffs world px on plan pages)
+    var pins = []; pages.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); }).forEach(function (x) { ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind !== 'pin') return; pins.push({ id: m.id, pin: m.pin, n: m.n, text: m.text, to: m.to, floor: x.floor_code || null, page_id: x.id, page_kind: x.kind, session_id: x.session_id, x: m.x, y: m.y, plan_id: (x.plan_ref && x.plan_ref.plan_id) || null, status: m.status }); }); });
+    var planNotesPatch = await mirrorPinsToPlanNotes(pid, pins);
     var patch = { survey_summary: {
       app: 'survey', version: CFG.version, updated_at: nowIso(),
       sessions: s.data.length, last_session: s.data[0] ? { id: s.data[0].id, title: s.data[0].title, kind: s.data[0].kind, status: s.data[0].status, started_at: s.data[0].started_at } : null,
       pages: { notes: pages.filter(function (x) { return /blank|lined|grid/.test(x.kind); }).length, plans: pages.filter(function (x) { return x.kind === 'plan'; }).length, photos: photos.length, checklists: checklists },
       photos: photos.slice(0, 60).map(function (x) { return { id: x.id, path: x.photo_path, url: photoUrl(x.photo_path), title: x.title || null, floor: x.floor_code || null, room: x.room || null, plan_pin: (x.metadata && x.metadata.plan_pin) || null }; }),
       marks_by_floor: marksByFloor,
+      pins: pins.map(function (q) { return { id: q.id, pin: q.pin, n: q.n, text: q.text || '', to: q.to || null, floor: q.floor, page_id: q.page_id, session_id: q.session_id, x: q.x, y: q.y, plan_id: q.plan_id, status: q.status || 'open' }; }),   // v0.6.0 — Tasks (snags, B-530) + Portal read these
       url: 'https://sonorltd.github.io/sonor-survey/?pid=' + pid
     } };
+    if (planNotesPatch) patch.plan_notes = planNotesPatch;
     var r = await supa.rpc('sonor_merge_project_metadata', { p_project_id: pid, p_patch: patch });
     if (r.error) console.warn('[Survey] publish', r.error.message);
   }
 
+  // v0.6.0 — PULL-THROUGH TO TAKEOFFS: RFI / client / note / dim pins become Plan Notes (projects.metadata.plan_notes, the
+  // sonor-takeoffs-notes.js v1 shape) — id 'svp_<mark id>', source 'survey', is_rfi + to for RFIs, floor + x/y so Takeoffs can
+  // place them; text edits in Survey update the note, a removed pin removes its note (only notes we created are touched).
+  async function mirrorPinsToPlanNotes(pid, pins) {
+    var want = pins.filter(function (q) { var d = (CFG.pins || []).find(function (c) { return c.pin === q.pin; }); return d && d.notes_section && q.page_kind === 'plan'; });
+    var cur = await supa.from('projects').select('metadata').eq('id', pid).maybeSingle(); if (cur.error) return null;
+    var pn = (cur.data && cur.data.metadata && cur.data.metadata.plan_notes) || null;
+    var next = JSON.parse(JSON.stringify(pn || { v: 1, sections: { general: [], spec: [], client: [] }, revisions: [] }));
+    next.sections = next.sections || { general: [], spec: [], client: [] }; ['general', 'spec', 'client'].forEach(function (k) { next.sections[k] = next.sections[k] || []; });
+    var seen = {}, changed = false;
+    want.forEach(function (q) {
+      var d = (CFG.pins || []).find(function (c) { return c.pin === q.pin; }), id = 'svp_' + q.id, sec = d.notes_section; seen[id] = true;
+      var text = ((q.text || '').trim() || (d.label)) + (q.pin === 'dim' ? '' : ''), label = (q.pin === 'rfi' ? 'RFI ' : q.pin === 'client' ? 'Client ' : q.pin === 'dim' ? 'Site dimension ' : 'Site note ') + (q.n || '');
+      var existing = null, holder = null; ['general', 'spec', 'client'].forEach(function (k) { var i = next.sections[k].findIndex(function (n) { return n.id === id; }); if (i >= 0) { existing = next.sections[k][i]; holder = k; } });
+      var body = label.trim() + ' — ' + text;
+      if (!existing) { next.sections[sec].push({ id: id, text: body, floor: q.floor, x: q.x, y: q.y, status: 'open', source: 'survey', is_rfi: !!d.is_rfi, to: q.to || null, export: true, services: [], show: { general: true, plan: true, schedule: true }, created_at: nowIso(), created_by: 'survey' }); changed = true; }
+      else if (existing.text !== body || existing.x !== q.x || existing.y !== q.y || existing.floor !== q.floor || (existing.to || null) !== (q.to || null)) { existing.text = body; existing.x = q.x; existing.y = q.y; existing.floor = q.floor; existing.to = q.to || null; existing.updated_at = nowIso(); changed = true; }
+    });
+    ['general', 'spec', 'client'].forEach(function (k) { var before = next.sections[k].length; next.sections[k] = next.sections[k].filter(function (n) { return !(n.source === 'survey' && /^svp_/.test(n.id) && !seen[n.id]); }); if (next.sections[k].length !== before) changed = true; });
+    return changed ? next : null;
+  }
   window.addEventListener('online', function () { status.online = true; emit(); flush(); });
   window.addEventListener('offline', function () { status.online = false; emit(); });
   setInterval(function () { if (status.pending) flush(); }, 30000);

@@ -641,7 +641,7 @@
   const api = {
     init, refresh, loadProjects,
     getActiveId, getProject, getProjects, setActive,
-    __version: '1.11.0',
+    __version: '1.11.1',
     __ls_key: LS_KEY
   };
   if (typeof window !== 'undefined') window.SonorProjectBar = api;

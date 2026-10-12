@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.5.1 — photo tags P1…Pn in-app (pins, thumbnails, pin chip) via SurveyInk.photoTags; Retake / Change photo from the page or its pin; devices legend on any page)
+/* Sonor Survey — APP (app-local, v0.6.0 — Text tool, 📌 Pins menu (RFI / client / note / snag / dim → Takeoffs plan_notes), service order, hi-res plans)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */
@@ -29,7 +29,7 @@
   // ---------- project / sessions ----------
   async function onProject(pid, project) {
     if (!pid || pid === S.pid) return;
-    S.pid = pid; S.project = project; S.session = null; S.page = null; S.floors = null; S.images = {};
+    S.pid = pid; S.project = project; S.session = null; S.pinFloor = null; S.page = null; S.floors = null; S.images = {};
     showEmpty();
     $('#svPages').innerHTML = '';
     S.sessions = await window.SurveyStore.listSessions(pid);
@@ -185,11 +185,57 @@
     var pb = (S.tags || tags()).pinnedBy[p.id]; if (pb) { var pp = S.pages.find(function (x) { return x.id === pb.pageId; }); var el2 = pp && thumbEl(pp.id); if (el2) thumbFor(pp, el2); }
     toast('Photo replaced');
   }
+  // ---------- v0.6.0 TEXT tool — a floating editor over the page; commits as a text OBJECT (SonorInk paints it everywhere) ----------
+  function textSize() { var a = $('.sv-w.active'); return CFG.textSizes[(a && a.textContent) || 'M'] || 32; }
+  function activeColour() { var a = $('.sv-swatch.active'); return (a && a.dataset.c) || '#141414'; }
+  function openTextEditor(obj, pt) {
+    closeTextEditor(true);
+    var pg = ink.getPage(); if (!pg) return;
+    var ed = document.createElement('textarea'); ed.className = 'sv-text-ed'; ed.placeholder = 'Type… (Enter = done, Shift+Enter = new line)'; ed.value = obj ? obj.text : '';
+    var size = obj ? obj.size : textSize(), c = obj ? obj.c : activeColour(), x = obj ? obj.x : pt[0], y = obj ? obj.y : pt[1], w = obj ? obj.w : Math.min(pg.space.w - x - 10, 520);
+    var r = ink.pageToScreen ? ink.pageToScreen(x, y) : null, host = $('#svCanvas').getBoundingClientRect();
+    var sc = ink.getScale ? ink.getScale() : 1;
+    ed.style.left = ((r ? r[0] : host.width / 2) ) + 'px'; ed.style.top = ((r ? r[1] : host.height / 2)) + 'px'; ed.style.width = Math.max(160, w * sc) + 'px'; ed.style.fontSize = Math.max(12, size * sc) + 'px'; ed.style.color = c;
+    S.textEd = { el: ed, obj: obj, x: x, y: y, w: w, size: size, c: c, at: Date.now() };
+    ed.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeTextEditor(); } else if (e.key === 'Escape') { e.preventDefault(); closeTextEditor(true); } e.stopPropagation(); };
+    ed.onblur = function () { if (S.textEd && S.textEd.el === ed && Date.now() - S.textEd.at < 400) { setTimeout(function () { try { ed.focus(); } catch (e) { } }, 0); return; } setTimeout(function () { if (S.textEd && S.textEd.el === ed) closeTextEditor(); }, 80); };
+    $('#svCanvas').appendChild(ed); ed.focus();
+  }
+  function closeTextEditor(cancel) {
+    var te = S.textEd; if (!te) return; S.textEd = null; var txt = te.el.value.replace(/\s+$/, ''); te.el.remove();
+    if (cancel) return;
+    if (te.obj) { if (!txt) ink.select(te.obj.id), ink.removeSelected(); else if (txt !== te.obj.text) ink.updateObject(te.obj.id, { text: txt }); return; }
+    if (!txt) return;
+    var lines = txt.split('\n').length;
+    ink.addObject({ id: 't_' + window.SurveyStore.uuid().replace(/-/g, '').slice(0, 12), kind: 'text', text: txt, size: te.size, c: te.c, x: Math.round(te.x), y: Math.round(te.y), w: Math.round(te.w), h: Math.round(lines * te.size * 1.25) });
+    ink.select(null);
+  }
+  // ---------- v0.6.0 PINS (RFI / client / note / snag / dim) — numbered per type across the session; text via a sheet ----------
+  // numbered per PROJECT (RFI 7 stays RFI 7 across survey sessions — it's the same RFI in Takeoffs Plan Notes): session pages + the published summary of earlier sessions
+  function nextPinNumber(kind) { var n = 0; (S.pinFloor && S.pinFloor[kind]) && (n = S.pinFloor[kind]); S.pages.forEach(function (p) { ((p.ink && p.ink.marks) || []).forEach(function (m) { if (m.kind === 'pin' && m.pin === kind && m.n > n) n = m.n; }); }); var pg = ink.getPage(); ((pg && pg.marks) || []).forEach(function (m) { if (m.kind === 'pin' && m.pin === kind && m.n > n) n = m.n; }); return n + 1; }
+  async function loadPinFloor() {   // highest pin number per type already published for this project (other sessions)
+    S.pinFloor = {}; try { var r = await supa.from('projects').select('metadata').eq('id', S.pid).maybeSingle(); var pins = (r.data && r.data.metadata && r.data.metadata.survey_summary && r.data.metadata.survey_summary.pins) || []; pins.forEach(function (q) { if (!S.session || q.session_id !== S.session.id) S.pinFloor[q.pin] = Math.max(S.pinFloor[q.pin] || 0, q.n || 0); }); } catch (e) { }
+  }
+  function pinDef(kind) { return CFG.pins.find(function (p) { return p.pin === kind; }); }
+  function pinLabel(m) { return ((window.SonorInk && window.SonorInk.PIN_LABEL[m.pin]) || 'PIN') + (m.n ? ' ' + m.n : ''); }
+  function openPinSheet(mark) {
+    var d = pinDef(mark.pin) || {}, body = document.createElement('div'); body.className = 'sv-pin-sheet';
+    body.innerHTML = '<p class="muted">' + esc(d.hint || '') + '</p><textarea class="sv-pin-text" rows="3" placeholder="' + esc(d.label || 'Pin') + ' — what\'s the note?"></textarea>' +
+      (d.pin === 'rfi' ? '<input class="sv-pin-to" placeholder="To (architect / client / contractor)">' : '') +
+      '<div class="sv-pin-actions"><button type="button" class="btn sv-pin-cancel">Remove pin</button><button type="button" class="btn btn-primary sv-pin-ok">Save ' + esc(pinLabel(mark)) + '</button></div>';
+    var ta = $('.sv-pin-text', body), to = $('.sv-pin-to', body); ta.value = mark.text || ''; if (to) to.value = mark.to || '';
+    $('.sv-pin-ok', body).onclick = function () { var patch = { text: ta.value.trim() }; if (to) patch.to = to.value.trim() || null; ink.updateMark(mark.id, patch); closeModal(); refreshMarkUi(); };
+    $('.sv-pin-cancel', body).onclick = function () { closeModal(); if (!mark.text && !ta.value.trim()) ink.removeMark(mark.id); };
+    ta.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('.sv-pin-ok', body).click(); } e.stopPropagation(); };
+    openModal(pinLabel(mark) + ' · ' + (d.label || ''), body); setTimeout(function () { ta.focus(); }, 30);
+  }
   function refreshMarkUi() {
     var mk = ink.selectedMark && ink.selectedMark();
     $('#svMarkPhoto').hidden = !mk; $('#svMarkOpen').hidden = !(mk && mk.photo_page_id);
     if (mk) { var has = !!(mk.photo_page_id && S.pages.some(function (x) { return x.id === mk.photo_page_id; })); $('#svMarkPhoto .lbl').textContent = has ? 'Retake' : 'Photo here'; $('#svMarkPhoto').title = has ? 'Retake the photo pinned here (keeps the pin + tag)' : 'Take a photo pinned to the selected mark'; var tg = has && S.tags && S.tags.tag[mk.photo_page_id]; $('#svMarkOpen .lbl').textContent = tg ? 'Open ' + tg : 'Pinned photo'; }
     $('#svDelObj').hidden = !((ink.getTool() === 'select' || ink.getTool() === 'mark') && (ink.selected() || mk));
+    var isPin = !!(mk && mk.kind === 'pin'); $('#svPinEdit').hidden = !isPin; if (isPin) $('#svPinEdit .lbl').textContent = 'Edit ' + pinLabel(mk); if (mk && mk.kind === 'pin') { $('#svMarkPhoto').hidden = false; }
+    var so = ink.selected && ink.selected(); $('#svTextEdit').hidden = !(so && so.kind === 'text');
   }
   async function imageFor(key, path) {
     if (S.bitmaps[key]) return S.bitmaps[key];
@@ -294,11 +340,13 @@
   // ---------- ink → autosave ----------
   function onInk(op) {
     if (!S.page) return;
+    if (op.type === 'text-tap') { setTimeout(function () { openTextEditor(op.object, op.pt); }, 30); return; }   // after the pointer sequence, so the tap's own focus change can't blur the editor
     if (op.type === 'erase') op.ids.forEach(function (id) { S.erased.push(id); });
     if (op.type === 'add') { var i = S.erased.indexOf(op.stroke.id); if (i >= 0) S.erased.splice(i, 1); }
     if (op.type === 'object') { if (op.action === 'remove') S.erased.push(op.object.id); else { var j = S.erased.indexOf(op.object.id); if (j >= 0) S.erased.splice(j, 1); } }
     if (op.type === 'mark') { if (op.action === 'remove') S.erased.push(op.mark.id); else { var k = S.erased.indexOf(op.mark.id); if (k >= 0) S.erased.splice(k, 1); }
       if (op.action === 'add' && op.mark.kind === 'photo' && !op.undo && !op.mark.photo_page_id) { S.pendingPhotoMark = op.mark.id; setTimeout(function () { $('#svPhotoIn').click(); }, 50); }
+      if (op.action === 'add' && op.mark.kind === 'pin' && !op.undo && !op.mark.n) { op.mark.n = nextPinNumber(op.mark.pin); setTimeout(function () { openPinSheet(op.mark); }, 30); }
       refreshMarkUi(); }
     updateUndo(); $('#svDelObj').hidden = !(ink.getTool() === 'select' && ink.selected());
     clearTimeout(S.saveT); S.saveT = setTimeout(flushSave, CFG.autosaveMs);
@@ -307,7 +355,7 @@
     clearTimeout(S.saveT); if (S.noFlushOnce) { S.noFlushOnce = false; return; }
     if (!S.page || !S.session || S.page.kind === 'checklist') return;
     var pg = ink.getPage(); if (!pg) return;
-    S.page.ink = { v: 1, space: pg.space, strokes: pg.strokes, objects: (pg.objects || []).map(function (o) { return { id: o.id, kind: o.kind, src: o.src, path: o.path, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t }; }), marks: pg.marks || [] };
+    S.page.ink = { v: 1, space: pg.space, strokes: pg.strokes, objects: (pg.objects || []).map(function (o) { return o.kind === 'text' ? { id: o.id, kind: 'text', text: o.text, size: o.size, c: o.c, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t } : { id: o.id, kind: o.kind, src: o.src, path: o.path, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t }; }), marks: pg.marks || [] };
     var er = S.erased; S.erased = [];
     window.SurveyStore.saveInk(S.pid, S.session.id, S.page, er);
     var el = thumbEl(S.page.id); if (el) thumbFor(S.page, el);
@@ -370,12 +418,23 @@
       b.onclick = function () { var def = Object.assign({}, d, { c: col }); $$('.sv-mark-chip').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('mark'); };
       pal.appendChild(b);
     });
+    var pm = $('#svPinsMenu'); CFG.pins.forEach(function (d) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-pin-item'; b.style.setProperty('--mk', d.c); b.innerHTML = '<span class="sv-mark-dot sv-pin-dot">' + esc(d.glyph) + '</span><span><b>' + esc(d.label) + '</b><small>' + esc(d.hint || '') + '</small></span>';
+      b.onclick = function () { setTool('pin:' + d.pin); }; pm.appendChild(b);
+    });
+    document.addEventListener('pointerdown', function (e) { if (!e.target.closest('#svPinsMenu, #svPinsBtn')) $('#svPinsMenu').hidden = true; }, true);
+    $('#svPinEdit').onclick = function () { var mk = ink.selectedMark(); if (mk && mk.kind === 'pin') openPinSheet(mk); };
+    $('#svTextEdit').onclick = function () { var o = ink.selected(); if (o && o.kind === 'text') openTextEditor(o); };
     var ks = $('#svKind'); CFG.sessionKinds.forEach(function (k) { var o = document.createElement('option'); o.value = k[0]; o.textContent = k[1]; ks.appendChild(o); });
     $('#svPortrait').classList.toggle('active', S.portrait);
   }
-  function setToolBtn(t) { $$('[data-tool]').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); $('#svPalette').hidden = t !== 'mark'; refreshMarkUi(); }
-  function curTool() { var b = $('[data-tool].active'); return b ? b.dataset.tool : ink.getTool(); }
+  function setToolBtn(t) { $$('button[data-tool]').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); $('#svPalette').hidden = t !== 'mark'; refreshMarkUi(); }
+  function curTool() { var b = $('button[data-tool].active'); return b ? b.dataset.tool : ink.getTool(); }
   function setTool(t) {
+    closeTextEditor();
+    if (t === 'text') { ink.setTool('text'); setToolBtn('text'); return; }
+    if (/^pin:/.test(t)) { var pk = t.slice(4), pdf = pinDef(pk); if (!pdf) return; if (!S.pinFloor) loadPinFloor(); ink.setMarkDef({ code: 'pin-' + pk, kind: 'pin', pin: pk, label: pdf.label, glyph: pdf.glyph, c: pdf.c, nn: null }); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('pins'); $('#svPalette').hidden = true; $('#svPinsBtn .lbl').textContent = pdf.label; $('#svPinsMenu').hidden = true; S.pinKind = pk; return; }
+    if (t === 'pins') { var m = $('#svPinsMenu'), br = $('#svPinsBtn').getBoundingClientRect(); m.style.left = Math.max(8, Math.min(br.left, window.innerWidth - 300)) + 'px'; m.style.top = (br.bottom + 6) + 'px'; m.hidden = !m.hidden; return; }   // fixed-position (the tool bar scrolls + clips)   // the 📌 button always opens the menu; the chosen kind stays armed
     if (t === 'photopin') { ink.setMarkDef(Object.assign({}, CFG.photoMark, { c: '#1C1C1E' })); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('photopin'); $('#svPalette').hidden = true; return; }
     if (t === 'mark') { var act = $('.sv-mark-chip.active'); if (!act) { var first = $('.sv-mark-chip'); if (first) first.click(); return; } var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
     ink.setTool(t); setToolBtn(t);
@@ -402,7 +461,7 @@
     });
   }
   function wireUi() {
-    $$('[data-tool]').forEach(function (b) { b.onclick = function () { setTool(b.dataset.tool); }; });
+    $$('button[data-tool]').forEach(function (b) { b.onclick = function () { setTool(b.dataset.tool); }; });   // v0.6.0: BUTTONS only — the canvas host also carries data-tool (cursor CSS), and wiring it re-armed the first device on every canvas click
     $('#svUndo').onclick = function () { ink.undo(); }; $('#svRedo').onclick = function () { ink.redo(); };
     $('#svFit').onclick = function () { ink.fit(); };
     $('#svDelObj').onclick = function () { ink.removeSelected(); refreshMarkUi(); };
@@ -432,11 +491,13 @@
     $('#svEngineer').onclick = function () { var cur = ''; try { cur = localStorage.getItem('sonor_survey_engineer') || ''; } catch (e) { } var v = prompt('Your name (stamped on new surveys + the report)', cur); if (v != null) { try { localStorage.setItem('sonor_survey_engineer', v.trim()); } catch (e) { } if (S.session) { S.session.engineer = v.trim(); window.SurveyStore.updateSession(S.pid, S.session.id, { engineer: v.trim() }); renderSessions(); } } };
     $('#svPublish').onclick = async function () { if (!S.pid) return; flushSave(); await window.SurveyStore.flush(); await window.SurveyStore.publishSummary(S.pid); toast('Survey summary published to the project'); };
     document.addEventListener('keydown', function (e) {
+      if (S.textEd || (e.target && e.target.closest && e.target.closest('textarea, input'))) return;
       if (e.target && (/input|select|textarea/i.test(e.target.tagName) || e.target.isContentEditable)) return;
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? ink.redo() : ink.undo(); }
       else if (e.key === 'p') setTool('pen'); else if (e.key === 'h') setTool('hl'); else if (e.key === 'e') setTool('eraser'); else if (e.key === 'v') setTool('select'); else if (e.key === ' ') { setTool('pan'); }
       else if (e.key === 'f') ink.fit();
-      else if (e.key === 'Escape') { ink.clearSelection && ink.clearSelection(); refreshMarkUi(); }
+      else if (e.key === 'Escape') { if (S.textEd) return; $('#svPinsMenu').hidden = true; ink.clearSelection && ink.clearSelection(); refreshMarkUi(); }
+      else if (e.key === 't') setTool('text');
       else if (e.key === 'm') setTool('mark'); else if (e.key === 'c') setTool('photopin');
       else if ((e.key === 'Backspace' || e.key === 'Delete') && /select|mark/.test(ink.getTool()) && (ink.selected() || ink.selectedMark())) { e.preventDefault(); ink.removeSelected(); refreshMarkUi(); }
     });
@@ -457,6 +518,6 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function fmtDate(iso) { try { var d = new Date(iso); return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }); } catch (e) { return ''; } }
 
-  window.SurveyApp = { state: S, boot: boot, addPage: addPage, flushSave: flushSave, insertImage: insertImage, exportReport: exportReport, pageModel: pageModel, replacePhoto: replacePhoto, tags: tags, openPage: openPage, ink: function () { return ink; } };
+  window.SurveyApp = { state: S, boot: boot, openPinSheet: openPinSheet, openTextEditor: openTextEditor, closeTextEditor: closeTextEditor, addPage: addPage, flushSave: flushSave, insertImage: insertImage, exportReport: exportReport, pageModel: pageModel, replacePhoto: replacePhoto, tags: tags, openPage: openPage, ink: function () { return ink; } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

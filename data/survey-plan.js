@@ -1,4 +1,4 @@
-/* Sonor Survey — PLAN LOADER (app-local, v0.1.0)
+/* Sonor Survey — PLAN LOADER (app-local, v0.6.0 — hi-res plan raster)
  * Floors + the ACTIVE plan per floor come from Takeoffs (takeoffs_floors / takeoffs_floor_plans / bucket takeoffs-plans)
  * — the Survey app never keeps its own copy of a plan. The image is fitted exactly as Takeoffs' loadBackgroundImage does
  * (k = min(1400/W, 900/H), anchored top-left) so ink drawn here is in the Takeoffs world frame.
@@ -27,7 +27,7 @@ window.SurveyPlan = (function () {
   }
   // Returns { image, fit:{x,y,w,h}, basis:{w,h,k} }
   async function loadImage(supa, planRow) {
-    var key = 'plan:' + planRow.id, blob = null;
+    var key = 'plan:' + planRow.id + ':hd', blob = null;   // v0.6.0 ':hd' — re-rasterise plans cached at the old 3200 px
     try { blob = await window.SurveyStore.blobGet(key); } catch (e) { }
     if (!blob) {
       var url = await signedUrl(supa, planRow.storage_path);
@@ -45,7 +45,7 @@ window.SurveyPlan = (function () {
     if (!window.pdfjsLib) throw new Error('pdf.js not loaded');
     var doc = await pdfjsLib.getDocument({ data: buf }).promise;
     var page = await doc.getPage(Math.min(Math.max(1, pageIndex | 0), doc.numPages));
-    var vp1 = page.getViewport({ scale: 1 }), scale = Math.min(4, 3200 / Math.max(vp1.width, vp1.height));
+    var vp1 = page.getViewport({ scale: 1 }), scale = Math.min(6, 4600 / Math.max(vp1.width, vp1.height));   // v0.6.0 HI-RES: 4600 px long edge (A1 ≈ 140 dpi; stays under Safari's 16.7 MP canvas cap)
     var vp = page.getViewport({ scale: scale });
     var c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
     var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
