@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.2.0)
+/* Sonor Survey — INK ENGINE (app-local, v0.3.0)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -23,8 +23,12 @@ window.SurveyInk = (function () {
   function r2(v) { return Math.round(v * 100) / 100; }
 
   // ---------- static drawing (no view state) ----------
-  function widthAt(st, p) { if (st.tool === 'hl') return st.w * 4; var pr = (p == null || p === 0) ? 0.5 : p; return st.w * (0.45 + 1.1 * pr); }
+  // v0.3.0: the painters live in the ROOT master data/sonor-ink.js (SonorInk) so Takeoffs' survey-ink layer paints the
+  // same pixels; the inline copies below are the offline / load-order fallback only (delegate-with-fallback, B-420).
+  var SI = window.SonorInk || null;
+  function widthAt(st, p) { if (SI) return SI.widthAt(st, p); if (st.tool === 'hl') return st.w * 4; var pr = (p == null || p === 0) ? 0.5 : p; return st.w * (0.45 + 1.1 * pr); }
   function drawStroke(ctx, st) {
+    if (SI) return SI.drawStroke(ctx, st);
     var pts = st.pts; if (!pts || !pts.length) return;
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = st.c;
     if (st.tool === 'hl') { ctx.globalAlpha = 0.32; ctx.globalCompositeOperation = 'multiply'; ctx.lineCap = 'butt'; }
@@ -41,6 +45,7 @@ window.SurveyInk = (function () {
     ctx.restore();
   }
   function drawPaper(ctx, page, lw) {
+    if (SI) return SI.drawPaper(ctx, page, lw);
     var sp = page.space;
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, sp.w, sp.h);
     if (page.image) { var f = page.imageFit || { x: 0, y: 0, w: sp.w, h: sp.h }; try { ctx.drawImage(page.image, f.x, f.y, f.w, f.h); } catch (e) { } }
@@ -56,6 +61,7 @@ window.SurveyInk = (function () {
     }
   }
   function drawObjects(ctx, page) {
+    if (SI) return SI.drawObjects(ctx, page.objects, page.images);
     (page.objects || []).forEach(function (o) {
       var im = page.images && page.images[o.src];
       if (im) { try { ctx.drawImage(im, o.x, o.y, o.w, o.h); } catch (e) { } }
@@ -292,5 +298,5 @@ window.SurveyInk = (function () {
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.2.0' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.3.0' };
 })();

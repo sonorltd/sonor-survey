@@ -75,6 +75,10 @@ window.SurveyStore = (function () {
     }
     return (await cacheGet(key)) || [];
   }
+  async function listHistory(pageId) {
+    var r = await supa.from('survey_page_history').select('id,version,ink,checklist,saved_at,superseded_at,title').eq('page_id', pageId).order('version', { ascending: false }).limit(60);
+    return r.error ? [] : r.data;
+  }
   async function listTemplates() {
     if (status.online) {
       try { var r = await supa.from('survey_templates').select('*').eq('active', true).order('sort'); if (!r.error) { await cacheSet('templates', r.data); return r.data; } } catch (e) { }
@@ -226,7 +230,7 @@ window.SurveyStore = (function () {
     onStatus: function (f) { listeners.push(f); f(status); },
     status: function () { return status; },
     uuid: uuid, photoPath: photoPath,
-    listSessions: listSessions, listPages: listPages, listProjectPhotos: listProjectPhotos, listTemplates: listTemplates,
+    listSessions: listSessions, listPages: listPages, listProjectPhotos: listProjectPhotos, listTemplates: listTemplates, listHistory: listHistory,
     createSession: createSession, updateSession: updateSession, createPage: createPage, updatePage: updatePage,
     saveInk: saveInk, stashPhoto: stashPhoto, photoUrl: photoUrl, photoBlob: photoBlob,
     blobGet: blobGet, blobSet: blobSet, flush: flush, publishSummary: publishSummary,

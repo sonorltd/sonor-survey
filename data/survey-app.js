@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.2.0)
+/* Sonor Survey — APP (app-local, v0.3.0)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */
@@ -186,7 +186,8 @@
     var host = $('#svPages'); host.innerHTML = '';
     S.pages.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); }).forEach(function (p) {
       var el = document.createElement('div'); el.className = 'sv-thumb' + (S.page && S.page.id === p.id ? ' active' : ''); el.dataset.id = p.id;
-      el.innerHTML = '<div class="sv-thumb-img"><img alt=""></div><div class="sv-thumb-lbl"><span class="sv-thumb-kind">' + esc(p.kind) + '</span> ' + esc(p.title || (p.floor_code ? p.floor_code : '')) + '</div>';
+      var lbl = p.title || (p.kind === 'checklist' ? ((p.metadata || {}).checklist || {}).name : null) || (p.floor_code ? p.floor_code : null);   // v0.2.1: the title replaces the kind, not prefixes it
+      el.innerHTML = '<div class="sv-thumb-img"><img alt=""></div><div class="sv-thumb-lbl">' + (lbl ? esc(lbl) : '<span class="sv-thumb-kind">' + esc(p.kind) + '</span>') + '</div>';
       el.onclick = function () { openPage(p.id); };
       host.appendChild(el); thumbFor(p, el);
     });
@@ -237,7 +238,8 @@
     clearTimeout(S.saveT); S.saveT = setTimeout(flushSave, CFG.autosaveMs);
   }
   function flushSave() {
-    clearTimeout(S.saveT); if (!S.page || !S.session || S.page.kind === 'checklist') return;
+    clearTimeout(S.saveT); if (S.noFlushOnce) { S.noFlushOnce = false; return; }
+    if (!S.page || !S.session || S.page.kind === 'checklist') return;
     var pg = ink.getPage(); if (!pg) return;
     S.page.ink = { v: 1, space: pg.space, strokes: pg.strokes, objects: (pg.objects || []).map(function (o) { return { id: o.id, kind: o.kind, src: o.src, path: o.path, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t }; }) };
     var er = S.erased; S.erased = [];
@@ -245,6 +247,32 @@
     var el = thumbEl(S.page.id); if (el) thumbFor(S.page, el);
   }
   window.addEventListener('pagehide', flushSave); document.addEventListener('visibilitychange', function () { if (document.hidden) flushSave(); });
+
+  // ---------- history (survey_page_history — every superseded version, trigger-written) ----------
+  async function showHistory() {
+    if (!S.page) return; if (!navigator.onLine) return toast('History needs a connection');
+    flushSave(); await window.SurveyStore.flush();
+    var rows = await window.SurveyStore.listHistory(S.page.id), p = S.page;
+    try { var vr = await supa.from('survey_pages').select('version').eq('id', p.id).maybeSingle(); if (vr.data) p.version = vr.data.version; } catch (e) { }
+    var body = document.createElement('div'); body.className = 'sv-floorlist';
+    var cur = document.createElement('div'); cur.className = 'muted'; cur.textContent = 'Current: v' + (p.version || 1) + ' · ' + ((p.ink.strokes || []).length) + ' strokes · ' + ((p.ink.objects || []).length) + ' images' + (p.plan_ref && p.plan_ref.revision_label ? ' · plan ' + p.plan_ref.revision_label : ''); body.appendChild(cur);
+    if (!rows.length) { var e = document.createElement('p'); e.className = 'muted'; e.textContent = 'No earlier versions yet — every save from now on is kept.'; body.appendChild(e); }
+    rows.forEach(function (h) {
+      var b = document.createElement('div'); b.className = 'sv-hist';
+      var cl = h.checklist ? window.SurveyChecklist.progress(h.checklist) : null;
+      b.innerHTML = '<div><b>v' + h.version + '</b> <span class="muted">' + esc(new Date(h.saved_at).toLocaleString('en-GB')) + ' · ' + ((h.ink && h.ink.strokes) || []).length + ' strokes · ' + ((h.ink && h.ink.objects) || []).length + ' images' + (cl ? ' · checklist ' + cl.done + '/' + cl.total : '') + '</span></div>';
+      var act = document.createElement('div'); act.className = 'row gap';
+      var view = document.createElement('button'); view.type = 'button'; view.className = 'btn btn-sm'; view.textContent = 'View';
+      view.onclick = async function () { var m = await pageModel(Object.assign({}, p, { ink: h.ink })); var c = window.SurveyInk.renderPage(m, null, 480, { minStroke: 2 }); var img = document.createElement('img'); img.src = c.toDataURL('image/png'); img.style.cssText = 'max-width:100%;border:1px solid var(--border);border-radius:6px;margin-top:8px'; var old = b.querySelector('img'); if (old) old.remove(); else b.appendChild(img); };
+      var rest = document.createElement('button'); rest.type = 'button'; rest.className = 'btn btn-sm'; rest.textContent = 'Restore';
+      rest.onclick = async function () { if (!rest.dataset.armed) { rest.dataset.armed = '1'; rest.textContent = 'Restore — sure?'; setTimeout(function () { delete rest.dataset.armed; rest.textContent = 'Restore'; }, 6000); return; }
+        closeModal(); if (p.kind === 'checklist') { var meta = Object.assign({}, p.metadata || {}, { checklist: h.checklist }); p.metadata = meta; await window.SurveyStore.updatePage(S.pid, S.session.id, p.id, { metadata: meta }); openPage(p.id); }
+        else { var er = (p.ink.strokes || []).map(function (x) { return x.id; }).concat((p.ink.objects || []).map(function (x) { return x.id; })); p.ink = JSON.parse(JSON.stringify(h.ink)); await window.SurveyStore.saveInk(S.pid, S.session.id, p, er); S.noFlushOnce = true; openPage(p.id); }
+        toast('Restored v' + h.version + ' as a new version'); };
+      act.appendChild(view); act.appendChild(rest); b.appendChild(act); body.appendChild(b);
+    });
+    openModal('History — ' + (p.title || p.kind), body);
+  }
 
   // ---------- report ----------
   async function exportReport() {
@@ -315,6 +343,7 @@
     $('#svImageIn').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await insertImage(fs[i]); })(); };
     ['svTitle', 'svRoom'].forEach(function (id) { $('#' + id).onchange = savePageMeta; $('#' + id).onblur = savePageMeta; });
     $('#svFloor').onchange = savePageMeta;
+    $('#svHistory').onclick = showHistory;
     $('#svRemove').onclick = function () { if (!S.page) return; if ($('#svRemove').dataset.armed) { delete $('#svRemove').dataset.armed; $('#svRemove').textContent = 'Remove page'; hidePage(); } else { $('#svRemove').dataset.armed = '1'; $('#svRemove').textContent = 'Remove — sure?'; setTimeout(function () { delete $('#svRemove').dataset.armed; $('#svRemove').textContent = 'Remove page'; }, 6000); } };
     $('#svEngineer').onclick = function () { var cur = ''; try { cur = localStorage.getItem('sonor_survey_engineer') || ''; } catch (e) { } var v = prompt('Your name (stamped on new surveys + the report)', cur); if (v != null) { try { localStorage.setItem('sonor_survey_engineer', v.trim()); } catch (e) { } if (S.session) { S.session.engineer = v.trim(); window.SurveyStore.updateSession(S.pid, S.session.id, { engineer: v.trim() }); renderSessions(); } } };
     $('#svPublish').onclick = async function () { if (!S.pid) return; flushSave(); await window.SurveyStore.flush(); await window.SurveyStore.publishSummary(S.pid); toast('Survey summary published to the project'); };
