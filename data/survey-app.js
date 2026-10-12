@@ -1,4 +1,4 @@
-/* Sonor Survey — APP (app-local, v0.3.0)
+/* Sonor Survey — APP (app-local, v0.4.0 — survey marks palette + photo pins in the shared plan_pin record)
  * Shell + UI: project bar → sessions → pages (strip) → one ink canvas (or a checklist sheet). Takeoffs in principle, more basic.
  * v0.2.0: landscape notes, drop / paste / insert images as movable objects, checklist pages from survey_templates, luxury PDF report.
  */
@@ -116,14 +116,15 @@
     body.appendChild(blank);
     openModal('Checklist — pick a template', body);
   }
-  async function addPhotoPage(file) {
+  async function addPhotoPage(file, pin) {
     if (!file) return;
     var ph = await window.SurveyPlan.preparePhoto(file, CFG.spaces.photoMax, CFG.photoJpegQuality);
     var id = window.SurveyStore.uuid();
     if (!S.session) await newSession();
     var path = window.SurveyStore.photoPath(S.pid, S.session.id, id);
     await window.SurveyStore.blobSet('photo:' + id, ph.blob);
-    var row = await addPage('photo', { id: id, photo_path: path, title: 'Photo ' + (S.pages.filter(function (p) { return p.kind === 'photo'; }).length + 1), ink: { v: 1, space: { w: ph.w, h: ph.h }, strokes: [], objects: [] }, metadata: { w: ph.w, h: ph.h, bytes: ph.blob.size } });
+    var meta = { w: ph.w, h: ph.h, bytes: ph.blob.size }; if (pin) meta.plan_pin = pin;
+    var row = await addPage('photo', { id: id, photo_path: path, title: 'Photo ' + (S.pages.filter(function (p) { return p.kind === 'photo'; }).length + 1), floor_code: pin ? pin.floor_code : undefined, ink: { v: 1, space: { w: ph.w, h: ph.h }, strokes: [], objects: [] }, metadata: meta });
     await window.SurveyStore.stashPhoto(S.pid, S.session.id, id, ph.blob);
     return row;
   }
@@ -142,6 +143,25 @@
     ink.addObject({ id: id, kind: 'image', src: id, path: window.SurveyStore.photoPath(S.pid, S.session.id, id), x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
     await window.SurveyStore.stashPhoto(S.pid, S.session.id, id, ph.blob);
   }
+  // The ONE pin record shared with Tasks snags / Portal / Takeoffs 📌 Pin Photo (plan_pin): page units ARE Takeoffs canvas units.
+  function pinFor(planPage, mark) {
+    var sp = planPage.ink.space, pr = planPage.plan_ref || {};
+    return { source: 'survey', project_id: S.pid, floor_id: planPage.floor_id || null, floor_code: planPage.floor_code || null, plan_id: pr.plan_id || null, sheet_revision: pr.revision_label || null,
+      x_pct: Math.round(mark.x / sp.w * 10000) / 10000, y_pct: Math.round(mark.y / sp.h * 10000) / 10000, canvas_x: mark.x, canvas_y: mark.y,
+      page_id: planPage.id, session_id: S.session.id, mark_id: mark.id, mark_code: mark.code, timestamp: new Date().toISOString() };
+  }
+  async function photoAtMark(file, markId) {
+    var plan = S.page, mk = (ink.getPage().marks || []).find(function (m) { return m.id === markId; }); if (!plan || !mk) return addPhotoPage(file);
+    var pin = pinFor(plan, mk), planId = plan.id;
+    var row = await addPhotoPage(file, pin);          // opens the photo page
+    if (row) { var pp = S.pages.find(function (x) { return x.id === planId; }); if (pp) { var m2 = (pp.ink.marks || []).find(function (m) { return m.id === markId; }); if (m2) { m2.photo_page_id = row.id; await window.SurveyStore.saveInk(S.pid, S.session.id, pp, []); var el = thumbEl(pp.id); if (el) thumbFor(pp, el); } } }
+    return row;
+  }
+  function refreshMarkUi() {
+    var mk = ink.selectedMark && ink.selectedMark();
+    $('#svMarkPhoto').hidden = !mk; $('#svMarkOpen').hidden = !(mk && mk.photo_page_id);
+    $('#svDelObj').hidden = !((ink.getTool() === 'select' || ink.getTool() === 'mark') && (ink.selected() || mk));
+  }
   async function imageFor(key, path) {
     if (S.bitmaps[key]) return S.bitmaps[key];
     var blob = await window.SurveyStore.photoBlob(key);
@@ -151,7 +171,7 @@
   }
   // Everything the renderer needs for a page row: background image (plan / photo) + object bitmaps
   async function pageModel(p) {
-    var m = { space: p.ink.space, strokes: p.ink.strokes || [], objects: p.ink.objects || [], images: {}, paper: p.kind, image: null, imageFit: null };
+    var m = { space: p.ink.space, strokes: p.ink.strokes || [], objects: p.ink.objects || [], marks: p.ink.marks || [], images: {}, paper: p.kind, image: null, imageFit: null };
     try {
       if (p.kind === 'plan' && p.plan_ref) {
         var key = 'plan:' + p.plan_ref.plan_id;
@@ -210,6 +230,7 @@
     (S.floors || []).forEach(function (f) { var o = document.createElement('option'); o.value = f.code; o.textContent = f.code + (f.name ? ' · ' + f.name : ''); fl.appendChild(o); });
     if (p.floor_code && !$$('option', fl).some(function (o) { return o.value === p.floor_code; })) { var o = document.createElement('option'); o.value = p.floor_code; o.textContent = p.floor_code; fl.appendChild(o); }
     fl.value = p.floor_code || ''; fl.disabled = p.kind === 'plan';
+    var pin = p.metadata && p.metadata.plan_pin; var pc = $('#svPinChip'); pc.hidden = !pin; if (pin) { pc.textContent = '📍 ' + (pin.floor_code || 'plan') + (pin.mark_code ? ' · ' + pin.mark_code.toUpperCase() : ''); pc.onclick = function () { if (pin.page_id) openPage(pin.page_id).then(function () { if (pin.mark_id) { setTool('select'); ink.selectMark(pin.mark_id); refreshMarkUi(); } }); }; }
     if (!S.floors && S.pid) window.SurveyPlan.listFloors(supa, S.pid).then(function (f) { S.floors = f; if (S.page === p) renderPageMeta(); });
   }
   function savePageMeta() {
@@ -234,6 +255,9 @@
     if (op.type === 'erase') op.ids.forEach(function (id) { S.erased.push(id); });
     if (op.type === 'add') { var i = S.erased.indexOf(op.stroke.id); if (i >= 0) S.erased.splice(i, 1); }
     if (op.type === 'object') { if (op.action === 'remove') S.erased.push(op.object.id); else { var j = S.erased.indexOf(op.object.id); if (j >= 0) S.erased.splice(j, 1); } }
+    if (op.type === 'mark') { if (op.action === 'remove') S.erased.push(op.mark.id); else { var k = S.erased.indexOf(op.mark.id); if (k >= 0) S.erased.splice(k, 1); }
+      if (op.action === 'add' && op.mark.kind === 'photo' && !op.undo && !op.mark.photo_page_id) { S.pendingPhotoMark = op.mark.id; setTimeout(function () { $('#svPhotoIn').click(); }, 50); }
+      refreshMarkUi(); }
     updateUndo(); $('#svDelObj').hidden = !(ink.getTool() === 'select' && ink.selected());
     clearTimeout(S.saveT); S.saveT = setTimeout(flushSave, CFG.autosaveMs);
   }
@@ -241,7 +265,7 @@
     clearTimeout(S.saveT); if (S.noFlushOnce) { S.noFlushOnce = false; return; }
     if (!S.page || !S.session || S.page.kind === 'checklist') return;
     var pg = ink.getPage(); if (!pg) return;
-    S.page.ink = { v: 1, space: pg.space, strokes: pg.strokes, objects: (pg.objects || []).map(function (o) { return { id: o.id, kind: o.kind, src: o.src, path: o.path, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t }; }) };
+    S.page.ink = { v: 1, space: pg.space, strokes: pg.strokes, objects: (pg.objects || []).map(function (o) { return { id: o.id, kind: o.kind, src: o.src, path: o.path, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t }; }), marks: pg.marks || [] };
     var er = S.erased; S.erased = [];
     window.SurveyStore.saveInk(S.pid, S.session.id, S.page, er);
     var el = thumbEl(S.page.id); if (el) thumbFor(S.page, el);
@@ -297,10 +321,16 @@
       sw.appendChild(b);
     });
     var ws = $('#svWidths'); CFG.widths.forEach(function (w, i) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-w' + (i === 1 ? ' active' : ''); b.textContent = w.k; b.title = 'Width ' + w.w; b.onclick = function () { ink.setWidth(w.w); $$('.sv-w').forEach(function (x) { x.classList.toggle('active', x === b); }); }; ws.appendChild(b); });
+    var pal = $('#svMarks'); CFG.marks.forEach(function (d) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-mark-chip'; b.dataset.code = d.code;
+      var col = d.nn ? svcColour(d.nn) : '#1C1C1E'; b.style.setProperty('--mk', col); b.innerHTML = '<span class="sv-mark-dot">' + esc(d.glyph) + '</span>' + esc(d.label);
+      b.onclick = function () { var def = Object.assign({}, d, { c: col }); ink.setMarkDef(def); $$('.sv-mark-chip').forEach(function (x) { x.classList.toggle('active', x === b); }); if (ink.getTool() !== 'mark') setTool('mark'); };
+      pal.appendChild(b);
+    });
     var ks = $('#svKind'); CFG.sessionKinds.forEach(function (k) { var o = document.createElement('option'); o.value = k[0]; o.textContent = k[1]; ks.appendChild(o); });
     $('#svPortrait').classList.toggle('active', S.portrait);
   }
-  function setToolBtn(t) { $$('[data-tool]').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); $('#svDelObj').hidden = !(t === 'select' && ink.selected()); }
+  function setToolBtn(t) { $$('[data-tool]').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); $('#svPalette').hidden = t !== 'mark'; refreshMarkUi(); }
   function setTool(t) { ink.setTool(t); setToolBtn(t); }
   function updateUndo() { $('#svUndo').disabled = !ink.canUndo(); $('#svRedo').disabled = !ink.canRedo(); }
   function openAddMenu(anchor) {
@@ -327,7 +357,7 @@
     $$('[data-tool]').forEach(function (b) { b.onclick = function () { setTool(b.dataset.tool); }; });
     $('#svUndo').onclick = function () { ink.undo(); }; $('#svRedo').onclick = function () { ink.redo(); };
     $('#svFit').onclick = function () { ink.fit(); };
-    $('#svDelObj').onclick = function () { ink.removeSelected(); $('#svDelObj').hidden = true; };
+    $('#svDelObj').onclick = function () { ink.removeSelected(); refreshMarkUi(); };
     $('#svFinger').onclick = function () { var on = !$('#svFinger').classList.contains('active'); $('#svFinger').classList.toggle('active', on); ink.fingerDraws(on); $('#svFinger').setAttribute('aria-pressed', on); };
     $('#svNew').onclick = newSession; $('#svClose').onclick = toggleClose; $('#svReport').onclick = exportReport;
     $('#svSession').onchange = function () { if (this.value) openSession(this.value); };
@@ -338,7 +368,9 @@
     $$('#svAddMenu [data-add]').forEach(function (b) {
       b.onclick = function () { $('#svAddMenu').hidden = true; var k = b.dataset.add; if (k === 'plan') addPlanPage(); else if (k === 'checklist') addChecklistPage(); else if (k === 'photo') $('#svPhotoIn').click(); else if (k === 'photo-lib') $('#svPhotoLib').click(); else if (k === 'image') $('#svImageIn').click(); else addPage(k); };
     });
-    $('#svPhotoIn').onchange = function () { var f = this.files[0]; this.value = ''; addPhotoPage(f); };
+    $('#svPhotoIn').onchange = function () { var f = this.files[0]; this.value = ''; var mid = S.pendingPhotoMark; S.pendingPhotoMark = null; if (mid) { if (f) photoAtMark(f, mid); else ink.removeMark(mid); } else addPhotoPage(f); };
+    $('#svMarkPhoto').onclick = function () { var mk = ink.selectedMark(); if (!mk) return; S.pendingPhotoMark = mk.id; $('#svPhotoIn').click(); };
+    $('#svMarkOpen').onclick = function () { var mk = ink.selectedMark(); if (mk && mk.photo_page_id) openPage(mk.photo_page_id); };
     $('#svPhotoLib').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await addPhotoPage(fs[i]); })(); };
     $('#svImageIn').onchange = function () { var fs = Array.from(this.files); this.value = ''; (async function () { for (var i = 0; i < fs.length; i++) await insertImage(fs[i]); })(); };
     ['svTitle', 'svRoom'].forEach(function (id) { $('#' + id).onchange = savePageMeta; $('#' + id).onblur = savePageMeta; });
@@ -352,10 +384,11 @@
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') { e.preventDefault(); e.shiftKey ? ink.redo() : ink.undo(); }
       else if (e.key === 'p') setTool('pen'); else if (e.key === 'h') setTool('hl'); else if (e.key === 'e') setTool('eraser'); else if (e.key === 'v') setTool('select'); else if (e.key === ' ') { setTool('pan'); }
       else if (e.key === 'f') ink.fit();
-      else if ((e.key === 'Backspace' || e.key === 'Delete') && ink.getTool() === 'select' && ink.selected()) { e.preventDefault(); ink.removeSelected(); $('#svDelObj').hidden = true; }
+      else if (e.key === 'm') setTool('mark');
+      else if ((e.key === 'Backspace' || e.key === 'Delete') && /select|mark/.test(ink.getTool()) && (ink.selected() || ink.selectedMark())) { e.preventDefault(); ink.removeSelected(); refreshMarkUi(); }
     });
     document.addEventListener('keyup', function (e) { if (e.key === ' ' && ink.getTool() === 'pan') setTool('pen'); });
-    $('#svCanvas').addEventListener('pointerup', function () { setTimeout(function () { $('#svDelObj').hidden = !(ink.getTool() === 'select' && ink.selected()); }, 0); });
+    $('#svCanvas').addEventListener('pointerup', function () { setTimeout(refreshMarkUi, 0); });
     $('#svModalClose').onclick = closeModal;
   }
   function renderSync(st) {
@@ -371,6 +404,6 @@
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function fmtDate(iso) { try { var d = new Date(iso); return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }); } catch (e) { return ''; } }
 
-  window.SurveyApp = { state: S, boot: boot, addPage: addPage, flushSave: flushSave, insertImage: insertImage, exportReport: exportReport, pageModel: pageModel };
+  window.SurveyApp = { state: S, boot: boot, addPage: addPage, flushSave: flushSave, insertImage: insertImage, exportReport: exportReport, pageModel: pageModel, ink: function () { return ink; } };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

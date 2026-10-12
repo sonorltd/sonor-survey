@@ -13,7 +13,31 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = factory(); else root.SonorInk = factory();
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var VERSION = '1.0.0', PAPER = { line: 36, grid: 25 };
+  var VERSION = '1.1.0', PAPER = { line: 36, grid: 25 }, MARK_R = 13;
+  // v1.1.0 — SURVEY MARKS: { id, code, block_code, service_nn, label, glyph, c:'#svc', x, y, t, kind:'block'|'photo', photo_page_id?, note? }
+  // A mark is a survey-stage intent ("TV here", "keypad here", "photo taken here") in page units; Takeoffs swaps block marks
+  // for Library blocks (block_code) at takeoff stage. Drawn as a service-coloured disc + glyph; photo marks as a camera tag.
+  function inkFor(hex) { var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || ''); if (!m) return '#fff'; var l = (0.299 * parseInt(m[1], 16) + 0.587 * parseInt(m[2], 16) + 0.114 * parseInt(m[3], 16)); return l > 150 ? '#0B1A22' : '#fff'; }
+  function drawMark(ctx, m, opts) {
+    var alpha = (opts && opts.alpha != null) ? opts.alpha : 1, r = (opts && opts.r) || MARK_R, c = m.c || '#98989D';
+    ctx.save(); ctx.globalAlpha = alpha;
+    if (m.kind === 'photo') {
+      ctx.fillStyle = '#1C1C1E'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - r * 0.55, m.y - r * 1.1); ctx.lineTo(m.x + r * 0.55, m.y - r * 1.1); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(m.x - r, m.y - r * 2.4, r * 2, r * 1.5, 3) : ctx.rect(m.x - r, m.y - r * 2.4, r * 2, r * 1.5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m.x, m.y - r * 1.65, r * 0.42, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1C1C1E'; ctx.beginPath(); ctx.arc(m.x, m.y - r * 1.65, r * 0.22, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = c; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(m.x, m.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = inkFor(c); ctx.font = 'bold ' + Math.round(r * 0.78) + 'px "DM Sans", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(m.glyph || '?').slice(0, 4), m.x, m.y + 0.5);
+      if (m.photo_page_id) { ctx.fillStyle = '#fff'; ctx.strokeStyle = c; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(m.x + r * 0.8, m.y - r * 0.8, r * 0.38, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+    }
+    ctx.restore();
+  }
+  function drawMarks(ctx, marks, opts) { (marks || []).forEach(function (m) { drawMark(ctx, m, opts); }); }
+  function markAt(marks, pt, r) { r = r || MARK_R * 1.3; for (var i = (marks || []).length - 1; i >= 0; i--) { var m = marks[i]; var dy = m.kind === 'photo' ? pt[1] - (m.y - MARK_R * 1.4) : pt[1] - m.y; if (Math.hypot(m.x - pt[0], dy) <= r) return m; } return null; }
   function widthAt(st, p) { if (st.tool === 'hl') return st.w * 4; var pr = (p == null || p === 0) ? 0.5 : p; return st.w * (0.45 + 1.1 * pr); }
   function drawStroke(ctx, st, opts) {
     var pts = st.pts; if (!pts || !pts.length) return;
@@ -60,6 +84,7 @@
   function drawInk(ctx, ink, images, opts) {
     drawObjects(ctx, (ink && ink.objects) || [], images, Object.assign({ skipMissing: true }, opts || {}));
     ((ink && ink.strokes) || []).forEach(function (st) { drawStroke(ctx, st, opts); });
+    drawMarks(ctx, (ink && ink.marks) || [], opts);
   }
   function renderPage(page, canvas, pxWidth, opts) {
     opts = opts || {}; var sp = page.space, s = pxWidth / sp.w;
@@ -68,7 +93,8 @@
     var x = canvas.getContext('2d'); x.setTransform(s, 0, 0, s, 0, 0);
     drawPaper(x, page, 1 / s); drawObjects(x, page.objects, page.images);
     (page.strokes || []).forEach(function (st) { drawStroke(x, opts.minStroke ? Object.assign({}, st, { w: Math.max(st.w, opts.minStroke / s) }) : st); });
+    drawMarks(x, page.marks, { r: Math.max(MARK_R, (opts.minMark || 0) / s) });
     return canvas;
   }
-  return { VERSION: VERSION, PAPER: PAPER, widthAt: widthAt, drawStroke: drawStroke, drawObjects: drawObjects, drawPaper: drawPaper, drawInk: drawInk, renderPage: renderPage };
+  return { VERSION: VERSION, PAPER: PAPER, MARK_R: MARK_R, inkFor: inkFor, drawMark: drawMark, drawMarks: drawMarks, markAt: markAt, widthAt: widthAt, drawStroke: drawStroke, drawObjects: drawObjects, drawPaper: drawPaper, drawInk: drawInk, renderPage: renderPage };
 }));

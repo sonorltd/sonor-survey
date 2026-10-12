@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.3.0)
+/* Sonor Survey — INK ENGINE (app-local, v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -92,6 +92,7 @@ window.SurveyInk = (function () {
     var undo = [], redo = [];
     var cur = null, pointers = new Map(), penActiveUntil = 0, pinch = null, panStart = null;
     var sel = null, drag = null;      // selected object id; drag = {mode:'move'|'resize', handle, start, orig}
+    var selMark = null, markDef = null, mdrag = null;   // v0.4.0 marks: selected mark id · active palette def · {id,start,orig}
     var W = 0, H = 0;
 
     function resize() {
@@ -125,12 +126,14 @@ window.SurveyInk = (function () {
       bgx.save(); bgx.shadowColor = 'rgba(0,0,0,.45)'; bgx.shadowBlur = 18 / view.s; bgx.shadowOffsetY = 4 / view.s; bgx.fillStyle = '#ffffff'; bgx.fillRect(0, 0, sp.w, sp.h); bgx.restore();
       bgx.save(); bgx.beginPath(); bgx.rect(0, 0, sp.w, sp.h); bgx.clip();
       drawPaper(bgx, page, 1 / view.s); drawObjects(bgx, page);
+      if (SI) SI.drawMarks(bgx, page.marks);
       bgx.restore();
     }
     function renderInk() { clear(inx); if (!page) return; applyView(inx); page.strokes.forEach(function (st) { drawStroke(inx, st); }); }
     function renderLive() {
       clear(lvx); if (!page) return; applyView(lvx);
       if (cur && !cur.eraser) drawStroke(lvx, cur);
+      var mk = selMarkObj(); if (mk && SI) { lvx.save(); lvx.strokeStyle = '#3A8AA8'; lvx.lineWidth = 2 / view.s; lvx.setLineDash([5 / view.s, 3 / view.s]); lvx.beginPath(); lvx.arc(mk.x, mk.kind === 'photo' ? mk.y - SI.MARK_R * 1.4 : mk.y, SI.MARK_R * 1.6, 0, Math.PI * 2); lvx.stroke(); lvx.restore(); }
       var o = selObj(); if (o && tool === 'select') {
         lvx.save(); lvx.strokeStyle = '#3A8AA8'; lvx.lineWidth = 1.5 / view.s; lvx.setLineDash([6 / view.s, 4 / view.s]); lvx.strokeRect(o.x, o.y, o.w, o.h); lvx.setLineDash([]);
         handles(o).forEach(function (h) { lvx.fillStyle = '#fff'; lvx.beginPath(); lvx.arc(h.x, h.y, 7 / view.s, 0, Math.PI * 2); lvx.fill(); lvx.stroke(); });
@@ -144,11 +147,24 @@ window.SurveyInk = (function () {
     function handles(o) { return [{ k: 'nw', x: o.x, y: o.y }, { k: 'ne', x: o.x + o.w, y: o.y }, { k: 'sw', x: o.x, y: o.y + o.h }, { k: 'se', x: o.x + o.w, y: o.y + o.h }]; }
     function objectAt(pt) { var os = page.objects || []; for (var i = os.length - 1; i >= 0; i--) { var o = os[i]; if (pt[0] >= o.x && pt[0] <= o.x + o.w && pt[1] >= o.y && pt[1] <= o.y + o.h) return o; } return null; }
     function handleAt(pt) { var o = selObj(); if (!o) return null; var r = 14 / view.s; return handles(o).find(function (h) { return Math.hypot(h.x - pt[0], h.y - pt[1]) <= r; }) || null; }
+    function selMarkObj() { return selMark && page ? (page.marks || []).find(function (m) { return m.id === selMark; }) : null; }
+    function addMark(def, pt) {
+      page.marks = page.marks || [];
+      var m = { id: uid('m_'), code: def.code, kind: def.kind || 'block', label: def.label, glyph: def.glyph, c: def.c || null, nn: def.nn || null, block_code: def.block_code || null, x: r2(pt[0]), y: r2(pt[1]), t: Date.now() };
+      page.marks.push(m); selMark = m.id; sel = null;
+      undo.push({ type: 'mark-add', mark: m }); redo.length = 0; onChange({ type: 'mark', action: 'add', mark: m }); render(); return m;
+    }
+    function removeMark(id) {
+      var i = (page.marks || []).findIndex(function (m) { return m.id === id; }); if (i < 0) return;
+      var m = page.marks.splice(i, 1)[0]; if (selMark === id) selMark = null;
+      undo.push({ type: 'mark-remove', mark: m, index: i }); redo.length = 0; onChange({ type: 'mark', action: 'remove', mark: m }); render();
+    }
     function addObject(o) {
       page.objects = page.objects || []; o.id = o.id || uid('o_'); o.t = o.t || Date.now();
       page.objects.push(o); sel = o.id; undo.push({ type: 'obj-add', object: o }); redo.length = 0; onChange({ type: 'object', action: 'add', object: o }); render(); return o;
     }
     function removeSelected() {
+      if (selMark) { removeMark(selMark); return; }
       var o = selObj(); if (!o) return; var i = page.objects.indexOf(o); page.objects.splice(i, 1); sel = null;
       undo.push({ type: 'obj-remove', object: o, index: i }); redo.length = 0; onChange({ type: 'object', action: 'remove', object: o }); render();
     }
@@ -156,7 +172,7 @@ window.SurveyInk = (function () {
     // ---------- input ----------
     host.style.touchAction = 'none';
     function isDrawPointer(e) {
-      if (tool === 'pan' || tool === 'select') return false;
+      if (tool === 'pan' || tool === 'select' || tool === 'mark') return false;
       if (e.pointerType === 'pen' || e.pointerType === 'mouse') return true;
       if (e.pointerType === 'touch') return fingerDraw && Date.now() > penActiveUntil && pointers.size <= 1;
       return false;
@@ -215,8 +231,18 @@ window.SurveyInk = (function () {
           panStart = null; return;
         }
       }
+      if (tool === 'mark') {
+        var mp = toPage(e.clientX, e.clientY), hitM = SI ? SI.markAt(page.marks, mp) : null;
+        if (hitM) { selMark = hitM.id; mdrag = { id: e.pointerId, start: mp, orig: { x: hitM.x, y: hitM.y } }; renderLive(); e.preventDefault(); return; }
+        if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
+        if (mp[0] < 0 || mp[1] < 0 || mp[0] > page.space.w || mp[1] > page.space.h) return;
+        addMark(markDef, mp); e.preventDefault(); return;
+      }
       if (tool === 'select') {
-        var pt = toPage(e.clientX, e.clientY), h = handleAt(pt), o = h ? selObj() : objectAt(pt);
+        var pt = toPage(e.clientX, e.clientY), hitMk = SI ? SI.markAt(page.marks, pt) : null;
+        if (hitMk) { selMark = hitMk.id; sel = null; mdrag = { id: e.pointerId, start: pt, orig: { x: hitMk.x, y: hitMk.y } }; renderLive(); e.preventDefault(); return; }
+        selMark = null;
+        var h = handleAt(pt), o = h ? selObj() : objectAt(pt);
         if (o) { sel = o.id; drag = { id: e.pointerId, mode: h ? 'resize' : 'move', handle: h && h.k, start: pt, orig: { x: o.x, y: o.y, w: o.w, h: o.h } }; renderLive(); e.preventDefault(); return; }
         sel = null; renderLive(); panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return;
       }
@@ -234,6 +260,7 @@ window.SurveyInk = (function () {
         var r = host.getBoundingClientRect(), px = pinch.cx - r.left, py = pinch.cy - r.top;
         view.s = pinch.s * f; view.tx = px - (px - pinch.tx) * f + (cx - pinch.cx); view.ty = py - (py - pinch.ty) * f + (cy - pinch.cy); clampView(); render(); return;
       }
+      if (mdrag && mdrag.id === e.pointerId) { var mm = selMarkObj(); if (mm) { var mpt = toPage(e.clientX, e.clientY); mm.x = r2(mdrag.orig.x + mpt[0] - mdrag.start[0]); mm.y = r2(mdrag.orig.y + mpt[1] - mdrag.start[1]); renderBg(); renderLive(); } return; }
       if (drag && drag.id === e.pointerId) {
         var o = selObj(); if (!o) return; var pt = toPage(e.clientX, e.clientY), dx = pt[0] - drag.start[0], dy = pt[1] - drag.start[1], g = drag.orig;
         if (drag.mode === 'move') { o.x = r2(g.x + dx); o.y = r2(g.y + dy); }
@@ -249,6 +276,8 @@ window.SurveyInk = (function () {
     }
     function onUp(e) {
       if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; }
+      if (mdrag && mdrag.id === e.pointerId) { var mm = selMarkObj(); if (mm) { var mpt = toPage(e.clientX, e.clientY); mm.x = r2(mdrag.orig.x + mpt[0] - mdrag.start[0]); mm.y = r2(mdrag.orig.y + mpt[1] - mdrag.start[1]); renderBg(); renderLive(); } return; }
+      if (mdrag && mdrag.id === e.pointerId) { var mk2 = selMarkObj(), mg = mdrag.orig; mdrag = null; if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); } }
       if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
       if (panStart) panStart = null;
       if (cur && cur.penId === e.pointerId) end();
@@ -272,6 +301,9 @@ window.SurveyInk = (function () {
       else if (op.type === 'obj-add') { var j = page.objects.indexOf(op.object); if (j >= 0) page.objects.splice(j, 1); if (sel === op.object.id) sel = null; onChange({ type: 'object', action: 'remove', object: op.object }); }
       else if (op.type === 'obj-remove') { page.objects.splice(Math.min(op.index, page.objects.length), 0, op.object); onChange({ type: 'object', action: 'add', object: op.object }); }
       else if (op.type === 'obj-update') { var o = page.objects.find(function (x) { return x.id === op.id; }); if (o) { applyObj(o, op.before); onChange({ type: 'object', action: 'update', object: o }); } }
+      else if (op.type === 'mark-add') { var mi = page.marks.indexOf(op.mark); if (mi >= 0) page.marks.splice(mi, 1); if (selMark === op.mark.id) selMark = null; onChange({ type: 'mark', action: 'remove', mark: op.mark }); }
+      else if (op.type === 'mark-remove') { page.marks.splice(Math.min(op.index, page.marks.length), 0, op.mark); onChange({ type: 'mark', action: 'add', mark: op.mark }); }
+      else if (op.type === 'mark-update') { var mu = page.marks.find(function (x) { return x.id === op.id; }); if (mu) { mu.x = op.before.x; mu.y = op.before.y; onChange({ type: 'mark', action: 'update', mark: mu }); } }
       redo.push(op); render();
     }
     function doRedo() {
@@ -281,22 +313,26 @@ window.SurveyInk = (function () {
       else if (op.type === 'obj-add') { page.objects.push(op.object); onChange({ type: 'object', action: 'add', object: op.object }); }
       else if (op.type === 'obj-remove') { var j = page.objects.indexOf(op.object); if (j >= 0) page.objects.splice(j, 1); onChange({ type: 'object', action: 'remove', object: op.object }); }
       else if (op.type === 'obj-update') { var o = page.objects.find(function (x) { return x.id === op.id; }); if (o) { applyObj(o, op.after); onChange({ type: 'object', action: 'update', object: o }); } }
+      else if (op.type === 'mark-add') { page.marks.push(op.mark); onChange({ type: 'mark', action: 'add', mark: op.mark }); }
+      else if (op.type === 'mark-remove') { var mj = page.marks.indexOf(op.mark); if (mj >= 0) page.marks.splice(mj, 1); onChange({ type: 'mark', action: 'remove', mark: op.mark }); }
+      else if (op.type === 'mark-update') { var mu2 = page.marks.find(function (x) { return x.id === op.id; }); if (mu2) { mu2.x = op.after.x; mu2.y = op.after.y; onChange({ type: 'mark', action: 'update', mark: mu2 }); } }
       undo.push(op); render();
     }
 
     return {
-      setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.images = page.images || {}; undo.length = 0; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
+      setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
       getPage: function () { return page; },
-      setTool: function (t) { tool = t; host.dataset.tool = t; if (t !== 'select') sel = null; renderLive(); }, getTool: function () { return tool; },
+      setTool: function (t) { tool = t; host.dataset.tool = t; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
+      setMarkDef: function (d) { markDef = d; }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark, updateMark: function (id, patch) { var m = (page.marks || []).find(function (x) { return x.id === id; }); if (!m) return; Object.assign(m, patch); onChange({ type: 'mark', action: 'update', mark: m }); render(); },
       setColour: function (c) { colour = c; }, setWidth: function (w) { width = w; },
       fingerDraws: function (b) { fingerDraw = !!b; },
       undo: doUndo, redo: doRedo, canUndo: function () { return undo.length > 0; }, canRedo: function () { return redo.length > 0; },
       fit: fit, render: render, zoomAt: zoomAt, viewCentrePage: viewCentrePage,
-      addObject: addObject, removeSelected: removeSelected, selected: selObj, select: function (id) { sel = id; renderLive(); },
+      addObject: addObject, removeSelected: removeSelected, selected: selObj, removeMark: removeMark, select: function (id) { sel = id; renderLive(); },
       thumbnail: function (tw) { return page ? renderPage(page, null, tw, { minStroke: 2.5 }).toDataURL('image/png') : null; },
       drawStrokeTo: drawStroke,
       destroy: function () { ro.disconnect(); host.innerHTML = ''; }
     };
   }
-  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.3.0' };
+  return { create: create, renderPage: renderPage, drawStroke: drawStroke, VERSION: '0.4.0' };
 })();

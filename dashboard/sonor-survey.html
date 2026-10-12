@@ -73,7 +73,7 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 .sv-canvas[data-tool="pan"] { cursor: grab; } .sv-canvas[data-tool="eraser"] { cursor: cell; }
 .sv-layer { position: absolute; inset: 0; }
 .sv-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); text-align: center; padding: 24px; }
-.sv-empty[hidden], .sv-canvas[hidden] { display: none; }
+.sv-empty[hidden], .sv-canvas[hidden], .btn[hidden], button[hidden] { display: none !important; }
 .sv-empty h2 { margin: 0; color: var(--text-primary); font-weight: 600; }
 #svAddMenu { position: fixed; z-index: 200; min-width: 200px; padding: 6px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0,0,0,.4); display: flex; flex-direction: column; gap: 3px; }
 #svAddMenu[hidden] { display: none; }
@@ -89,6 +89,12 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 #svToast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 400; background: var(--card); color: var(--text-primary); border: 1px solid var(--border-strong, var(--border)); border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 #svToast[hidden] { display: none; }
 .sv-sync { white-space: nowrap; }
+.sv-palette { position: absolute; left: 10px; right: 10px; top: 46px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.35); overflow-x: auto; }
+.sv-palette[hidden] { display: none; }
+.sv-marks { display: flex; gap: 6px; flex-wrap: nowrap; }
+.sv-mark-chip { min-height: 32px; padding: 3px 9px 3px 5px; font-size: 12px; }
+.sv-mark-chip.active { border-color: var(--mk); box-shadow: 0 0 0 1px var(--mk); }
+.sv-mark-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 50%; background: var(--mk); color: #fff; font-size: 9px; font-weight: 700; margin-right: 6px; padding: 0 4px; }
 .sv-stage.sv-drop .sv-canvas, .sv-stage.sv-drop #svCheck { outline: 2px dashed var(--accent); outline-offset: -6px; }
 .sv-canvas[data-tool="select"] { cursor: default; }
 /* checklist sheet — paper (§11) */
@@ -140,9 +146,12 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
   <button class="btn active" type="button" data-tool="pen" title="Pen (P)">✏️ <span class="lbl">Pen</span></button>
   <button class="btn" type="button" data-tool="hl" title="Highlighter (H)">🖍 <span class="lbl">Highlight</span></button>
   <button class="btn" type="button" data-tool="eraser" title="Eraser (E) — removes whole strokes">⌫ <span class="lbl">Eraser</span></button>
-  <button class="btn" type="button" data-tool="select" title="Select / move / resize images (V)">⬚ <span class="lbl">Select</span></button>
+  <button class="btn" type="button" data-tool="mark" title="Survey marks — TV / speaker / keypad / photo here… (M)">📍 <span class="lbl">Mark</span></button>
+  <button class="btn" type="button" data-tool="select" title="Select / move / resize images and marks (V)">⬚ <span class="lbl">Select</span></button>
   <button class="btn" type="button" data-tool="pan" title="Pan (hold Space)">✋ <span class="lbl">Pan</span></button>
-  <button class="btn" id="svDelObj" type="button" hidden title="Remove the selected image (⌫)">🗑 <span class="lbl">Image</span></button>
+  <button class="btn" id="svDelObj" type="button" hidden title="Remove the selected image / mark (⌫)">🗑</button>
+  <button class="btn" id="svMarkPhoto" type="button" hidden title="Take a photo pinned to the selected mark">📷 <span class="lbl">Photo here</span></button>
+  <button class="btn" id="svMarkOpen" type="button" hidden title="Open the photo pinned to this mark">🖼 <span class="lbl">Pinned photo</span></button>
   <span class="sv-sep"></span>
   <div class="sv-swatches" id="svColours"></div>
   <span class="sv-sep"></span>
@@ -162,9 +171,11 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
       <input id="svTitle" placeholder="Page title (e.g. Cinema room — rear wall)" aria-label="Page title">
       <select id="svFloor" aria-label="Floor"><option value="">Floor</option></select>
       <input id="svRoom" placeholder="Room" aria-label="Room">
+      <button class="btn btn-sm" id="svPinChip" type="button" hidden title="Pinned on the plan — tap to jump there"></button>
       <button class="btn btn-sm" id="svHistory" type="button" title="Every earlier version of this page (audit trail)">⟲ History</button>
       <button class="btn btn-sm" id="svRemove" type="button">Remove page</button>
     </div>
+    <div class="sv-palette" id="svPalette" hidden><span class="muted tiny">Tap a type, then tap the plan</span><div class="sv-marks" id="svMarks"></div></div>
     <div class="sv-canvas" id="svCanvas" hidden data-tool="pen"></div>
     <div id="svCheck" hidden></div>
     <div class="sv-empty" id="svEmpty">
@@ -199,7 +210,7 @@ body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.3.0';
+  const APP_VERSION = '0.4.0';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>

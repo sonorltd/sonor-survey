@@ -1,6 +1,6 @@
-# Survey — Claude Code Context (v0.3.0)
+# Survey — Claude Code Context (v0.4.0)
 
-> **Current version: 0.3.0** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
+> **Current version: 0.4.0** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
 > Inherits: `../CLAUDE.md` (master rules) · Brand source: `../Branding - CORE/brand-core.xml`
 > Born 2026-10-12 via `register-app.sh` (Bryn: "a survey app, essentially a notepad like Notability … Apple Pencil … markup plans during client meetings and site survey … link end to end for the project, with survey photos and plan markups, plus notes" — "a bit like Takeoffs in principle but a bit more basic").
 
@@ -29,6 +29,7 @@ can show the survey + photos without this app.
 - `survey_sessions` (id, project_id → projects, title, kind survey|meeting|snag-walk|handover|other, status open|closed, engineer, started_at, ended_at, summary, metadata)
 - `survey_pages` (id, session_id → sessions CASCADE, project_id, seq, kind blank|lined|grid|plan|photo, title, floor_id, floor_code, room, plan_ref jsonb {plan_id, storage_path, mime, page_index, revision_label, bucket}, photo_path, ink jsonb `{v, space:{w,h}, strokes:[{id,tool,c,w,t,pts:[[x,y,p]…]}]}`, thumb_path, **version** (CAS; `_survey_touch` trigger auto-bumps on an ink change that arrives without one — takeoffs_floors law), metadata)
 - `survey_templates` (key, name, service_nn, kind checklist|questions, sort, active, items jsonb) — SSOT for checklists + client questions; 12 seeded 2026-10-12 (client questions, cinema, media room, audio, lighting, automation, climate, CCTV, network, infrastructure, takeover). Edit rows to change future pages; existing pages keep their copy.
+- `survey_pages.ink.marks[]` = `{id, code, kind:'block'|'photo', label, glyph, c, nn, block_code, x, y, t, photo_page_id?}` — survey-stage intents in page units (plan pages = Takeoffs frame). Photo pages: `metadata.plan_pin` (shared pin record).
 - `survey_pages.ink.objects[]` = `{id, kind:'image', src, path, x, y, w, h, t}` — image blobs at `site-photos/{project}/survey/{session}/{objId}.jpg`, merged by id like strokes (removed ids ride the erase list).
 - RLS: anon SELECT / INSERT / UPDATE, no DELETE. "Remove page" = `metadata.hidden = true`. Test rows carry `metadata.is_test` (§28).
 - Storage: `site-photos/{project_id}/survey/{session_id}/{page_id}.jpg` (public bucket; URL via `getPublicUrl`). Plans are READ from `takeoffs-plans` only — this app never uploads a plan.
@@ -56,6 +57,7 @@ None.
 5. Publish via the merge RPC only (never `UPDATE projects SET metadata`).
 
 ## Feature timeline
+- **v0.4.0 (2026-10-12)** — SURVEY MARKS + PHOTO PINS (Bryn: "geolocate photos to the plan… simple palette of points like tv speaker keypad touchscreen… basis of the takeoff which then gets swapped out at takeoff stage"). `ink.marks[]` on plan pages — 📍 Mark tool + floating palette (20 types, service-coloured; each carries its DEFAULT Library `block_code`, config `marks[]`); Select moves / deletes marks; "📷 Photo here" on a selected mark (or the Photo palette item) takes a photo page carrying the SHARED `plan_pin` record (`metadata.plan_pin` — the same shape as Tasks snags / Portal / Takeoffs 📌: floor_id, plan_id, sheet_revision, x_pct, y_pct, canvas_x/y + page_id, mark_id); the mark shows a photo badge and both sides jump to each other. Summary publishes `marks_by_floor` (block_code counts) + photo pins. sonor-ink.js 1.1.0 paints marks everywhere (Takeoffs layer 1.1.0 shows marks + 📷). Takeoff-stage swap marks → blocks = B-529.
 - **v0.3.0 (2026-10-12)** — ⟲ History per page (`survey_page_history`, trigger-written on every ink / checklist change; view + restore-as-new-version); painters moved to the ROOT master `sonor-ink.js` (SonorInk) with inline fallback so Takeoffs' new Survey-ink layer paints identical pixels.
 - **v0.2.1 (2026-10-12)** — header version badge (window.APP_VERSION + appVersion), thumbnail label = title (kind only when untitled); project-bar 1.11.1 / wq-bar 1.4.6 neutral pills via sync; PM brief.html v1.5.0 "Site surveys" card reads survey_sessions / survey_pages live.
 - **v0.2.0 (2026-10-12)** — bg clip bug fixed (page 'scrolling around' / striped paper on Mac); landscape notes default; drop / paste / insert images as movable objects; checklist pages from `survey_templates` (12 templates); luxury PDF report (📄 Report). Headless-verified: pan sanity, object move / resize / delete / undo / cloud round-trip, checklist tick + value, 4-page report rasterised.

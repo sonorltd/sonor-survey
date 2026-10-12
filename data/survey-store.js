@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (app-local, v0.2.0 — ink.objects merged by id like strokes; survey_templates read)
+/* Sonor Survey — STORE (app-local, v0.4.0 — ink.objects + ink.marks merged by id like strokes; survey_templates read; summary carries marks_by_floor + photo plan_pins)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -198,7 +198,11 @@ window.SurveyStore = (function () {
     ((cloud && cloud.objects) || []).forEach(function (o) { if (!er[o.id]) om[o.id] = o; });
     ((local && local.objects) || []).forEach(function (o) { om[o.id] = o; });
     var objects = Object.keys(om).map(function (k) { return om[k]; }).sort(function (a, b) { return (a.t || 0) - (b.t || 0); });
-    return Object.assign({}, local, { strokes: strokes, objects: objects });
+    var mm = {};
+    ((cloud && cloud.marks) || []).forEach(function (m) { if (!er[m.id]) mm[m.id] = m; });
+    ((local && local.marks) || []).forEach(function (m) { mm[m.id] = m; });
+    var marks = Object.keys(mm).map(function (k) { return mm[k]; }).sort(function (a, b) { return (a.t || 0) - (b.t || 0); });
+    return Object.assign({}, local, { strokes: strokes, objects: objects, marks: marks });
   }
   function isNet(e) { var m = String((e && e.message) || e || ''); return /fetch|network|Failed|load failed|timeout|abort/i.test(m) || !navigator.onLine; }
 
@@ -206,15 +210,18 @@ window.SurveyStore = (function () {
   async function publishSummary(pid) {
     if (!status.online) return;
     var s = await supa.from('survey_sessions').select('id,title,kind,status,started_at,ended_at').eq('project_id', pid).order('started_at', { ascending: false });
-    var p = await supa.from('survey_pages').select('id,kind,title,floor_code,room,photo_path,session_id').eq('project_id', pid);
+    var p = await supa.from('survey_pages').select('id,kind,title,floor_code,room,photo_path,session_id,ink,metadata').eq('project_id', pid);
     if (s.error || p.error) return;
-    var pages = p.data, photos = pages.filter(function (x) { return x.kind === 'photo' && x.photo_path; });
+    var pages = p.data.filter(function (x) { return !(x.metadata && x.metadata.hidden); }), photos = pages.filter(function (x) { return x.kind === 'photo' && x.photo_path; });
+    var marksByFloor = {};   // v0.4.0 — survey-stage block intents per floor + block_code (Takeoffs B-529 swap source)
+    pages.forEach(function (x) { if (x.kind !== 'plan') return; ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind === 'photo') return; var f = x.floor_code || '?'; marksByFloor[f] = marksByFloor[f] || {}; var k = m.block_code || m.code; marksByFloor[f][k] = (marksByFloor[f][k] || 0) + 1; }); });
     var checklists = pages.filter(function (x) { return x.kind === 'checklist'; }).length;
     var patch = { survey_summary: {
       app: 'survey', version: CFG.version, updated_at: nowIso(),
       sessions: s.data.length, last_session: s.data[0] ? { id: s.data[0].id, title: s.data[0].title, kind: s.data[0].kind, status: s.data[0].status, started_at: s.data[0].started_at } : null,
       pages: { notes: pages.filter(function (x) { return /blank|lined|grid/.test(x.kind); }).length, plans: pages.filter(function (x) { return x.kind === 'plan'; }).length, photos: photos.length, checklists: checklists },
-      photos: photos.slice(0, 60).map(function (x) { return { id: x.id, path: x.photo_path, url: photoUrl(x.photo_path), title: x.title || null, floor: x.floor_code || null, room: x.room || null }; }),
+      photos: photos.slice(0, 60).map(function (x) { return { id: x.id, path: x.photo_path, url: photoUrl(x.photo_path), title: x.title || null, floor: x.floor_code || null, room: x.room || null, plan_pin: (x.metadata && x.metadata.plan_pin) || null }; }),
+      marks_by_floor: marksByFloor,
       url: 'https://sonorltd.github.io/sonor-survey/?pid=' + pid
     } };
     var r = await supa.rpc('sonor_merge_project_metadata', { p_project_id: pid, p_patch: patch });
