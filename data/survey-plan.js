@@ -10,7 +10,7 @@ window.SurveyPlan = (function () {
   var SP = CFG.spaces.plan;
 
   async function listFloors(supa, pid) {
-    var r = await supa.from('takeoffs_floors').select('floor_id,code,name,seq').eq('project_id', pid).order('seq');
+    var r = await supa.from('takeoffs_floors').select('floor_id,code,name,seq').eq('project_id', pid).is('deleted_at', null).order('seq');
     if (r.error) { console.warn('[Survey] floors', r.error.message); return []; }
     return (window.sonorSortFloors ? window.sonorSortFloors(r.data) : r.data);
   }
