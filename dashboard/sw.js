@@ -4,7 +4,7 @@
  *     opaque responses are kept — before, `r.ok` is false for an opaque response so they were never cached and an offline
  *     refresh lost supabase-js → blank app. Now a refresh with no signal boots from the cache and the IndexedDB store.
  *   · a navigate with any ?pid=&session= query serves the cached shell when the network is away. */
-const CACHE_VERSION = 'sonor-survey-0.10.4';
+const CACHE_VERSION = 'sonor-survey-0.11.0';
 const SHELL = ['./sonor-survey.html', './manifest.webmanifest', '../sonor-db.js', '../data/sonor-theme.js', '../data/brand.css', '../data/sonor-header.css', '../data/sonor-components.css', '../data/app-vars.css',
   '../data/sonor-brand.js', '../data/sonor-app.js', '../data/sonor-icons.js', '../data/sonor-header.js', '../data/sonor-project-list.js', '../data/sonor-project-bar.js',
   '../data/sonor-ink.js', '../data/sonor-survey-link.js', '../data/survey-config.js', '../data/survey-ink.js', '../data/survey-store.js', '../data/survey-plan.js', '../data/survey-checklist.js', '../data/survey-pdf.js', '../data/survey-app.js', '../data/survey-field.js', '../data/sonor-pdf-luxury.js', '../data/fonts/gilroy-extrabold.otf', '../data/fonts/gilroy-regular.otf', '../data/fonts/gilroy-ultralight.otf', '../data/cedia-member-stacked.png', '../data/survey-cover.jpg', '../data/favicon.svg',

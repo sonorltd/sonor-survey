@@ -2,7 +2,7 @@
 window.__SURVEY_CONFIG__ = (function () {
   'use strict';
   var CFG = {
-    version: '0.10.4',
+    version: '0.11.0',
     appKey: 'survey',
     buckets: { photos: 'site-photos', plans: 'takeoffs-plans' },
     // Page spaces (page-unit frames). PLAN = the Takeoffs world frame (1400×900 fit, anchored top-left) so a
@@ -59,7 +59,66 @@ window.__SURVEY_CONFIG__ = (function () {
       { code: 'smoke', label: 'Smoke alarm',    glyph: 'SM',  nn: '11', block_code: 'CL-SON-11-SMOKE-M' }
     ],
     photoMark: { code: 'photo', kind: 'photo', label: 'Photo here', glyph: '📷', nn: null },   // its own tool, never in the devices palette
-    extraColours: { '11': '#c0392b' },   // 11 Electrical is a Takeoffs block family, not a Sonor service colour
+    extraColours: { '11': '#c0392b' },
+    // v0.11.0 SITE OBJECTS — the 🧱 Objects palette (Bryn: "non sonor items like radiators and anything else we possibly need to be
+    // aware of for future ref"). Things that are THERE, not things we supply: they constrain cable routes, speaker / keypad
+    // positions, rack and plant locations. Drawn as a graphite rounded square (never a service colour), listed as
+    // SITE OBJECTS in the report, never counted as devices, never mirrored to Takeoffs as blocks. Groups keep the strip scannable.
+    objectColour: '#6E6E73',
+    objects: [
+      // building fabric
+      { code: 'steel',   group: 'Fabric',   label: 'Steel beam',      glyph: 'STL',  hint: 'RSJ / steel — no coring, route around' },
+      { code: 'joist',   group: 'Fabric',   label: 'Joist direction', glyph: 'JST',  hint: 'Tap, then draw an arrow with the pen for the run' },
+      { code: 'solid',   group: 'Fabric',   label: 'Solid wall',      glyph: 'SOL',  hint: 'Brick / block — chasing, no in-wall boxes without cutting' },
+      { code: 'stud',    group: 'Fabric',   label: 'Stud wall',       glyph: 'STD',  hint: 'Plasterboard — easy fishing' },
+      { code: 'void',    group: 'Fabric',   label: 'Ceiling void',    glyph: 'VD',   hint: 'Accessible void — note depth with a measurement pin' },
+      { code: 'hatch',   group: 'Fabric',   label: 'Loft hatch',      glyph: 'LFT',  hint: 'Loft / roof access' },
+      { code: 'riser',   group: 'Fabric',   label: 'Riser / duct',    glyph: 'RSR',  hint: 'Vertical route between floors' },
+      { code: 'fire',    group: 'Fabric',   label: 'Fireplace',       glyph: 'FP',   hint: 'Fireplace / stove / chimney breast' },
+      { code: 'stairs',  group: 'Fabric',   label: 'Stairs',          glyph: 'STR',  hint: 'Stair / landing — keypad and lighting positions' },
+      { code: 'rlight',  group: 'Fabric',   label: 'Roof light',      glyph: 'RL',   hint: 'Roof light / lantern — blinds, no ceiling kit here' },
+      { code: 'conc',    group: 'Fabric',   label: 'Concrete floor',  glyph: 'CNC',  hint: 'Solid / screeded floor — no under-floor route' },
+      // existing M&E (other trades)
+      { code: 'rad',     group: 'M&E',      label: 'Radiator',        glyph: 'RAD',  hint: 'Radiator — TRV candidate, speaker / keypad clash' },
+      { code: 'boiler',  group: 'M&E',      label: 'Boiler',          glyph: 'BLR',  hint: 'Boiler / heat pump unit' },
+      { code: 'cyl',     group: 'M&E',      label: 'Cylinder / tank', glyph: 'CYL',  hint: 'Hot water cylinder / tank' },
+      { code: 'cu',      group: 'M&E',      label: 'Consumer unit',   glyph: 'CU',   hint: 'Fuse board — spare ways?' },
+      { code: 'meter',   group: 'M&E',      label: 'Meter',           glyph: 'MTR',  hint: 'Electric / gas / water meter position' },
+      { code: 'stop',    group: 'M&E',      label: 'Stopcock',        glyph: 'STP',  hint: 'Mains water stop tap — leak shut-off valve goes here' },
+      { code: 'fan',     group: 'M&E',      label: 'Extract fan',     glyph: 'FAN',  hint: 'Extract / MVHR terminal' },
+      { code: 'acunit',  group: 'M&E',      label: 'AC unit',         glyph: 'AC',   hint: 'Existing air-con indoor / outdoor unit' },
+      { code: 'ont',     group: 'M&E',      label: 'Incoming / ONT',  glyph: 'ONT',  hint: 'Broadband entry — fibre ONT, master socket, cable TV' },
+      // existing kit (takeover / upgrade jobs)
+      { code: 'xtv',     group: 'Existing', label: 'Existing TV',     glyph: 'xTV',  hint: 'TV already there — size / bracket / sources' },
+      { code: 'xspk',    group: 'Existing', label: 'Existing spk',    glyph: 'xSP',  hint: 'Existing ceiling / in-wall / box speaker' },
+      { code: 'xkp',     group: 'Existing', label: 'Existing keypad', glyph: 'xKP',  hint: 'Existing keypad / dimmer / switch to reuse or replace' },
+      { code: 'xcam',    group: 'Existing', label: 'Existing camera', glyph: 'xCM',  hint: 'Existing CCTV camera' },
+      { code: 'xap',     group: 'Existing', label: 'Existing AP',     glyph: 'xAP',  hint: 'Existing Wi-Fi AP / router' },
+      { code: 'xrack',   group: 'Existing', label: 'Existing rack',   glyph: 'xRK',  hint: 'Existing rack / head end / cupboard of kit' },
+      { code: 'alarm',   group: 'Existing', label: 'Alarm panel',     glyph: 'ALM',  hint: 'Intruder alarm panel / keypad' },
+      { code: 'icom',    group: 'Existing', label: 'Intercom',        glyph: 'ICM',  hint: 'Existing door entry / intercom' },
+      { code: 'xstat',   group: 'Existing', label: 'Existing stat',   glyph: 'xTH',  hint: 'Existing thermostat / heating control' },
+      // furniture that fixes a position
+      { code: 'bed',     group: 'Furniture', label: 'Bed',            glyph: 'BED',  hint: 'Bed position — bedside keypads, TV sightline' },
+      { code: 'sofa',    group: 'Furniture', label: 'Sofa',           glyph: 'SOF',  hint: 'Seating — listening position, sub placement' },
+      { code: 'desk',    group: 'Furniture', label: 'Desk',           glyph: 'DSK',  hint: 'Desk — data, power, monitor' },
+      { code: 'island',  group: 'Furniture', label: 'Island',         glyph: 'ISL',  hint: 'Kitchen island — pendants, sockets, pop-ups' },
+      { code: 'ward',    group: 'Furniture', label: 'Wardrobe',       glyph: 'WRD',  hint: 'Fitted wardrobe — hides a wall, LED inside?' },
+      { code: 'bath',    group: 'Furniture', label: 'Bath / shower',  glyph: 'BTH',  hint: 'Bath / shower — IP zones for speakers and lights' },
+      // external
+      { code: 'tree',    group: 'External', label: 'Tree',            glyph: 'TRE',  hint: 'Tree — uplight, Wi-Fi shadow, duct route' },
+      { code: 'mh',      group: 'External', label: 'Manhole / duct',  glyph: 'MH',   hint: 'Manhole, drain run or existing duct' },
+      { code: 'tap',     group: 'External', label: 'External tap',    glyph: 'TAP',  hint: 'Outside tap — irrigation valve' },
+      { code: 'post',    group: 'External', label: 'Gate post',       glyph: 'GP',   hint: 'Gate post / pier — intercom, camera, keypad' },
+      { code: 'pond',    group: 'External', label: 'Pond / pool',     glyph: 'PND',  hint: 'Water — IP rating, pump power' },
+      { code: 'drive',   group: 'External', label: 'Drive / path',    glyph: 'DRV',  hint: 'Hard standing — ducts go in BEFORE this' },
+      // hazards + access
+      { code: 'asb',     group: 'Hazard',   label: 'Asbestos ?',      glyph: 'ASB',  hint: 'Suspected asbestos — do not disturb, flag it' },
+      { code: 'damp',    group: 'Hazard',   label: 'Damp',            glyph: 'DMP',  hint: 'Damp / water ingress near kit' },
+      { code: 'noacc',   group: 'Hazard',   label: 'No access',       glyph: 'NOA',  hint: 'Could not get in — survey later' },
+      { code: 'obs',     group: 'Hazard',   label: 'Obstruction',     glyph: 'OBS',  hint: 'Something in the way of a route or position' }
+    ],
+   // 11 Electrical is a Takeoffs block family, not a Sonor service colour
     // v0.6.0 PINS — the 📌 menu. Each pin is a numbered flag with text; RFI / client / note pins pull through to Takeoffs
     // Plan Notes (projects.metadata.plan_notes: section + is_rfi) at the same x/y; snags publish for Tasks (B-530); all in the report.
     pins: [

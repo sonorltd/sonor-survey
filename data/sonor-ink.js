@@ -1,4 +1,5 @@
 /* sonor-ink.js — SHARED INK RENDERER (canonical master at workspace root, synced to every app's data/)
+ * v1.3.0 (2026-10-14, Survey v0.11.0) — mark kind 'object': site objects (radiator, steel, loft hatch, existing kit…) as a graphite rounded square
  * v1.2.0 (2026-10-12, Survey v0.6.0) — text objects + pin marks (RFI / snag / client / note / dim)
  * v1.0.0 (2026-10-12, APP - Survey v0.3.0 / Takeoffs survey-ink layer) — HARMONY §3: the one place that knows how a
  * Survey stroke / image object is painted, so Takeoffs (overlay layer), Survey (editor, thumbnails, PDF report) and any
@@ -16,7 +17,7 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = factory(); else root.SonorInk = factory();
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-  var VERSION = '1.2.0', PAPER = { line: 36, grid: 25 }, MARK_R = 13;
+  var VERSION = '1.3.0', PAPER = { line: 36, grid: 25 }, MARK_R = 13;
   var PIN_LABEL = { rfi: 'RFI', snag: 'SNAG', client: 'CLIENT', note: 'NOTE', dim: 'DIM' };
   // v1.1.0 — SURVEY MARKS: { id, code, block_code, service_nn, label, glyph, c:'#svc', x, y, t, kind:'block'|'photo', photo_page_id?, note? }
   // A mark is a survey-stage intent ("TV here", "keypad here", "photo taken here") in page units; Takeoffs swaps block marks
@@ -40,6 +41,12 @@
       var lw = ctx.measureText(lab).width + r * 0.8, lx = m.x + r * 1.35, ly = m.y - r * 0.6, lh = r * 1.2;
       ctx.fillStyle = c; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(lx, ly, lw, lh, r * 0.25); else ctx.rect(lx, ly, lw, lh); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = inkFor(c); ctx.fillText(lab, lx + r * 0.4, ly + lh / 2 + 0.5);
+    } else if (m.kind === 'object') {   // v1.3.0 — SITE OBJECT (radiator, steel, loft hatch…): graphite rounded square, so it never reads as a service device
+      ctx.fillStyle = c; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(m.x - r, m.y - r, r * 2, r * 2, r * 0.3); else ctx.rect(m.x - r, m.y - r, r * 2, r * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = inkFor(c); ctx.font = 'bold ' + Math.round(r * 0.7) + 'px "DM Sans", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(m.glyph || '?').slice(0, 4), m.x, m.y + 0.5);
+      if (m.photo_page_id) { ctx.fillStyle = '#fff'; ctx.strokeStyle = c; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(m.x + r * 0.85, m.y - r * 0.85, r * 0.38, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
     } else {
       ctx.fillStyle = c; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(m.x, m.y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();

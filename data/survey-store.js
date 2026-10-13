@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (v0.10.3 — timed reads fall back to cache on bad signal; was v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
+/* Sonor Survey — STORE (v0.11.0 — objects_by_floor in the summary; was v0.10.3 — timed reads fall back to cache on bad signal; was v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -232,7 +232,8 @@ window.SurveyStore = (function () {
     if (s.error || p.error) return;
     var pages = p.data.filter(function (x) { return !(x.metadata && x.metadata.hidden); }), photos = pages.filter(function (x) { return x.kind === 'photo' && x.photo_path; });
     var marksByFloor = {};   // v0.4.0 — survey-stage block intents per floor + block_code (Takeoffs B-529 swap source)
-    pages.forEach(function (x) { ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind === 'photo' || m.kind === 'pin') return; var f = x.floor_code || '?'; marksByFloor[f] = marksByFloor[f] || {}; var k = m.block_code || m.code; marksByFloor[f][k] = (marksByFloor[f][k] || 0) + 1; }); });
+    var objectsByFloor = {};   // v0.11.0 — SITE OBJECTS (kind 'object') are what is THERE: counted for the record, never blocks for Takeoffs
+    pages.forEach(function (x) { ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind === 'photo' || m.kind === 'pin') return; var f = x.floor_code || '?'; if (m.kind === 'object') { objectsByFloor[f] = objectsByFloor[f] || {}; objectsByFloor[f][m.code] = (objectsByFloor[f][m.code] || 0) + 1; return; } marksByFloor[f] = marksByFloor[f] || {}; var k = m.block_code || m.code; marksByFloor[f][k] = (marksByFloor[f][k] || 0) + 1; }); });
     var checklists = pages.filter(function (x) { return x.kind === 'checklist'; }).length;
     // v0.6.0 — PINS: every RFI / client / note / snag / dim pin across the survey, in page order; x/y are page units (= Takeoffs world px on plan pages)
     var pins = []; pages.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); }).forEach(function (x) { ((x.ink && x.ink.marks) || []).forEach(function (m) { if (m.kind !== 'pin') return; pins.push({ id: m.id, pin: m.pin, n: m.n, text: m.text, to: m.to, floor: x.floor_code || null, page_id: x.id, page_kind: x.kind, session_id: x.session_id, x: m.x, y: m.y, plan_id: (x.plan_ref && x.plan_ref.plan_id) || null, status: m.status }); }); });
@@ -243,6 +244,7 @@ window.SurveyStore = (function () {
       pages: { notes: pages.filter(function (x) { return /blank|lined|grid/.test(x.kind); }).length, plans: pages.filter(function (x) { return x.kind === 'plan'; }).length, photos: photos.length, checklists: checklists },
       photos: photos.slice(0, 60).map(function (x) { return { id: x.id, path: x.photo_path, url: photoUrl(x.photo_path), title: x.title || null, floor: x.floor_code || null, room: x.room || null, plan_pin: (x.metadata && x.metadata.plan_pin) || null }; }),
       marks_by_floor: marksByFloor,
+      objects_by_floor: objectsByFloor,   // v0.11.0 site objects (radiators, steels, existing kit) — context, not supply
       pins: pins.map(function (q) { return { id: q.id, pin: q.pin, n: q.n, text: q.text || '', to: q.to || null, floor: q.floor, page_id: q.page_id, session_id: q.session_id, x: q.x, y: q.y, plan_id: q.plan_id, status: q.status || 'open' }; }),   // v0.6.0 — Tasks (snags, B-530) + Portal read these
       url: 'https://sonorltd.github.io/sonor-survey/?pid=' + pid
     } };

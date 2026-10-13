@@ -488,8 +488,17 @@
       if (lastNn !== null && d.nn !== lastNn) { var gap = document.createElement('span'); gap.className = 'sv-mark-gap'; pal.appendChild(gap); } lastNn = d.nn;
       var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-mark-chip'; b.dataset.code = d.code;
       var col = d.nn ? svcColour(d.nn) : '#1C1C1E'; b.style.setProperty('--mk', col); b.innerHTML = '<span class="sv-mark-dot">' + esc(d.glyph) + '</span>' + esc(d.label);
-      b.onclick = function () { var def = Object.assign({}, d, { c: col }); $$('.sv-mark-chip').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('mark'); };
+      b.onclick = function () { var def = Object.assign({}, d, { c: col }); $$('.sv-mark-chip:not(.sv-obj-chip)').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('mark'); };
       pal.appendChild(b);
+    });
+    // v0.11.0 🧱 OBJECTS palette — site objects (radiator, steel, loft hatch, existing kit…), grouped, graphite, kind 'object'
+    var opal = $('#svObjects'), lastGroup = null; (CFG.objects || []).forEach(function (d) {
+      if (lastGroup !== null && d.group !== lastGroup) { var ogap = document.createElement('span'); ogap.className = 'sv-mark-gap'; opal.appendChild(ogap); } 
+      if (d.group !== lastGroup) { var gl = document.createElement('span'); gl.className = 'sv-obj-group'; gl.textContent = d.group; opal.appendChild(gl); } lastGroup = d.group;
+      var ob = document.createElement('button'); ob.type = 'button'; ob.className = 'btn sv-mark-chip sv-obj-chip'; ob.dataset.code = d.code; ob.title = d.hint || d.label;
+      ob.style.setProperty('--mk', CFG.objectColour || '#6E6E73'); ob.innerHTML = '<span class="sv-mark-dot sv-obj-dot">' + esc(d.glyph) + '</span>' + esc(d.label);
+      ob.onclick = function () { var def = { code: d.code, kind: 'object', label: d.label, glyph: d.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }; $$('.sv-obj-chip').forEach(function (x) { x.classList.toggle('active', x === ob); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('object'); };
+      opal.appendChild(ob);
     });
     var pm = $('#svPinsMenu'); CFG.pins.forEach(function (d) {
       var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-pin-item'; b.style.setProperty('--mk', d.c); b.innerHTML = '<span class="sv-mark-dot sv-pin-dot">' + esc(d.glyph) + '</span><span><b>' + esc(d.label) + '</b><small>' + esc(d.hint || '') + '</small></span>';
@@ -501,12 +510,12 @@
     $('#svPortrait').classList.toggle('active', S.portrait);
   }
   // v0.7.0 CONTEXT STRIP: inks + widths for drawing tools, device chips for Devices, nothing for the rest — one strip, never a stack of bars
-  var TOOL_NAMES = { pen: 'Pen', hl: 'Highlighter', eraser: 'Eraser', mark: 'Devices', photopin: 'Photo — tap where you are standing', select: 'Select', pan: 'Pan', text: 'Text — tap the page' };
+  var TOOL_NAMES = { pen: 'Pen', hl: 'Highlighter', eraser: 'Eraser', mark: 'Devices', object: 'Objects — what is there (radiators, steels, existing kit)', photopin: 'Photo — tap where you are standing', select: 'Select', pan: 'Pan', text: 'Text — tap the page' };
   function setToolBtn(t) {
     var base = /^pin:/.test(t) ? 'pins' : t;
     $$('button[data-tool]').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); });
-    var inks = /^(pen|hl|text)$/.test(t), chips = t === 'mark';
-    $('#svPalette').hidden = !(inks || chips); $('#svCtxInks').hidden = !inks; $('#svMarks').hidden = !chips;
+    var inks = /^(pen|hl|text)$/.test(t), chips = t === 'mark', objs = t === 'object';
+    $('#svPalette').hidden = !(inks || chips || objs); $('#svCtxInks').hidden = !inks; $('#svMarks').hidden = !chips; $('#svObjects').hidden = !objs;
     var name = /^pin:/.test(t) ? ((pinDef(t.slice(4)) || {}).label + ' pin — tap the page') : (TOOL_NAMES[t] || t); $('#svToolNow').textContent = name;
     $('#svMoreBtn').classList.toggle('active', /^(hl|eraser|text|pan)$/.test(t) || /^pin:/.test(t));
     refreshMarkUi();
@@ -517,7 +526,8 @@
     if (t === 'text') { ink.setTool('text'); setToolBtn('text'); return; }
     if (/^pin:/.test(t)) { var pk = t.slice(4), pdf = pinDef(pk); if (!pdf) return; if (!S.pinFloor) loadPinFloor(); ink.setMarkDef({ code: 'pin-' + pk, kind: 'pin', pin: pk, label: pdf.label, glyph: pdf.glyph, c: pdf.c, nn: null }); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('pin:' + pk); S.pinKind = pk; $('#svMoreMenu').hidden = true; return; }
     if (t === 'photopin') { ink.setMarkDef(Object.assign({}, CFG.photoMark, { c: '#1C1C1E' })); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('photopin'); $('#svPalette').hidden = true; return; }
-    if (t === 'mark') { var act = $('.sv-mark-chip.active'); if (!act) { var first = $('.sv-mark-chip'); if (first) first.click(); return; } var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
+    if (t === 'object') { var oact = $('.sv-obj-chip.active'); if (!oact) { var ofirst = $('.sv-obj-chip'); if (ofirst) ofirst.click(); return; } var od = (CFG.objects || []).find(function (m) { return m.code === oact.dataset.code; }); if (od) ink.setMarkDef({ code: od.code, kind: 'object', label: od.label, glyph: od.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }); ink.setTool('mark'); setToolBtn('object'); return; }
+    if (t === 'mark') { var act = $('.sv-mark-chip:not(.sv-obj-chip).active'); if (!act) { var first = $('.sv-mark-chip'); if (first) first.click(); return; } var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
     ink.setTool(t); setToolBtn(t);
   }
   function updateUndo() { $('#svUndo').disabled = !ink.canUndo(); $('#svRedo').disabled = !ink.canRedo(); }
@@ -584,7 +594,7 @@
       else if (e.key === 'f') ink.fit();
       else if (e.key === 'Escape') { if (S.textEd) return; $$('.sv-menu').forEach(function (m) { m.hidden = true; }); ink.clearSelection && ink.clearSelection(); refreshMarkUi(); }
       else if (e.key === 't') setTool('text');
-      else if (e.key === 'm') setTool('mark'); else if (e.key === 'c') setTool('photopin');
+      else if (e.key === 'm') setTool('mark'); else if (e.key === 'o') setTool('object'); else if (e.key === 'c') setTool('photopin');
       else if ((e.key === 'Backspace' || e.key === 'Delete') && /select|mark/.test(ink.getTool()) && (ink.selected() || ink.selectedMark())) { e.preventDefault(); ink.removeSelected(); refreshMarkUi(); }
     });
     document.addEventListener('keyup', function (e) { if (e.key === ' ' && ink.getTool() === 'pan') setTool('pen'); });
