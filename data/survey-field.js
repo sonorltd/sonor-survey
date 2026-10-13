@@ -30,7 +30,7 @@
 
   // ---------- project finder ----------
   function recent() { try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch (e) { return []; } }
-  function remember(id) { try { var r = recent().filter(function (x) { return x !== id; }); r.unshift(id); localStorage.setItem(RECENT_KEY, JSON.stringify(r.slice(0, 8))); } catch (e) { } }
+  function remember(id) { try { var r = recent().filter(function (x) { return x !== id; }); r.unshift(id); localStorage.setItem(RECENT_KEY, JSON.stringify(r.slice(0, 10))); } catch (e) { } }   // v0.10.1 ten recents (Bryn)
   function isTest(p) { return !!(p.metadata && p.metadata.is_test); }
   function isDone(p) { return DONE.test(String(p.status || '')); }
   function projLabel(p) { return [p.ref, p.name].filter(Boolean).join(' · ') || p.id; }

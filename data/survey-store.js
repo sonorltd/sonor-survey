@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
+/* Sonor Survey — STORE (v0.10.3 — timed reads fall back to cache on bad signal; was v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -9,6 +9,9 @@ window.SurveyStore = (function () {
   'use strict';
   var CFG = window.__SURVEY_CONFIG__ || {};
   var supa = null, db = null, status = { online: navigator.onLine, pending: 0, flushing: false, last: null };
+  // v0.10.3 — one bar of signal is worse than none: a read that hangs would freeze the survey. Reads race an 8 s timer and
+  // fall back to the local cache, exactly as if the iPad were offline (writes never wait — they go to the outbox first).
+  var READ_MS = 8000; function timed(p, ms) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, ms || READ_MS); })]); }
   var listeners = [];
   function emit() { listeners.forEach(function (f) { try { f(status); } catch (e) { } }); }
 
@@ -57,7 +60,7 @@ window.SurveyStore = (function () {
     var key = 'sessions:' + pid, pend = await hasPendingFor(pid);
     if (status.online && !pend) {
       try {
-        var r = await supa.from('survey_sessions').select('*').eq('project_id', pid).order('started_at', { ascending: false });
+        var r = await timed(supa.from('survey_sessions').select('*').eq('project_id', pid).order('started_at', { ascending: false }));
         if (!r.error) { await cacheSet(key, r.data); return r.data; }
         console.warn('[Survey] sessions', r.error.message);
       } catch (e) { console.warn('[Survey] sessions offline', e.message); }
@@ -71,7 +74,7 @@ window.SurveyStore = (function () {
   var known = {};   // page id → highest version this device has seen / written (realtime echo + staleness guard)
   async function listPages(pid, sid) {
     var key = 'pages:' + sid, rows = null;
-    if (status.online) { try { var r = await supa.from('survey_pages').select('*').eq('session_id', sid).order('seq'); if (!r.error) rows = r.data; else console.warn('[Survey] pages', r.error.message); } catch (e) { } }
+    if (status.online) { try { var r = await timed(supa.from('survey_pages').select('*').eq('session_id', sid).order('seq')); if (!r.error) rows = r.data; else console.warn('[Survey] pages', r.error.message); } catch (e) { } }
     if (!rows) return (await cacheGet(key)) || [];
     var ops = await outboxAll();
     ops.forEach(function (o) {
@@ -96,7 +99,7 @@ window.SurveyStore = (function () {
   }
   async function listTemplates() {
     if (status.online) {
-      try { var r = await supa.from('survey_templates').select('*').eq('active', true).order('sort'); if (!r.error) { await cacheSet('templates', r.data); return r.data; } } catch (e) { }
+      try { var r = await timed(supa.from('survey_templates').select('*').eq('active', true).order('sort')); if (!r.error) { await cacheSet('templates', r.data); return r.data; } } catch (e) { }
     }
     return (await cacheGet('templates')) || [];
   }

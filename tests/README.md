@@ -20,3 +20,6 @@ All tests use the Bungalow Trial test project (`ce20bee2-…`, `metadata.is_test
 | ipad.mjs | v0.9.0: iPad landscape / portrait / iPhone viewports — scrollHeight == innerHeight (no page scroll), bar heights, screenshots |
 | v13.mjs | v0.9.1: two devices on one survey — marks + stroke + new page arrive on the second within seconds (realtime) |
 | v14.mjs | v0.10.0: Received photos sheet (pre-visit · from · via · notes) → credited notes page + categorised photo pages, badges, PDF labels |
+| leena.mjs | v0.10.2: loads the live Leena (31 Prestbury Road) session — 1 notes + 2 plan (client-marked) + 6 pre-visit photo pages, screenshots each, builds the report |
+| seed-leena-previsit.py | one-off data seed (2026-10-13): Takeoffs floors + client-marked KRA plans + credited pre-visit notes/photo pages written straight to Supabase in the app's own shapes. `--dry` previews, `--resume` re-uses uploads. Needs a local `.key` (anon) — never commit it |
+| offline.mjs | v0.10.3: cold install → warm-up → **network off → refresh the deep link** — shell + vendor libs from the SW, project list from the device cache, session/pages/photos/plans from IndexedDB; draw offline (outbox), Remove-page confirm sheet, back online → outbox flushes, report builds with grouped contents |

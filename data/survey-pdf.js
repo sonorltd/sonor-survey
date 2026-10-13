@@ -1,4 +1,4 @@
-/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.8.0 — neutral theme + gold cover mark; hi-res page images, service-ordered legends, pins lists + summary)
+/* Sonor Survey — SURVEY / MEETING REPORT PDF (app-local, v0.10.2 — neutral theme + gold cover mark; hi-res page images, service-ordered legends, pins lists + summary)
  * The luxury proposal chrome (root master data/sonor-pdf-luxury.js — cover · pageHead brand:'large' · pageFoot ·
  * sectionHead · specRows) on pdf-lib. Page images come from SurveyInk.renderPage (paper + photos + ink + marks) so the
  * PDF is exactly what was on the iPad. One A4 portrait per survey page; checklists as tick tables (paginated).
@@ -179,16 +179,36 @@ window.SurveyPdf = (function () {
       // contents (flows onto continuation summary pages)
       if (y + 40 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
       P.tracked('CONTENTS', M, y, 8.5, F.r, C.GOLD, 2.6); y += 18;
-      pages.forEach(function (p) {
+      // v0.10.3 photo pages list as GROUPS (consecutive photos sharing category + credit) — "P3–P8 · Pre-visit photos (6) · pp 9–14"
+      // rather than one row each (Bryn: "contents should prob not list every photo, do it by groups or types p3 to px etc").
+      var rows = [], i0 = 0;
+      while (i0 < pages.length) {
+        var p0 = pages[i0], r0 = p0.row;
+        if (r0.kind !== 'photo') { rows.push({ p: p0 }); i0++; continue; }
+        var key = catOf(r0) + '|' + creditOf(r0), j0 = i0; while (j0 < pages.length && pages[j0].row.kind === 'photo' && catOf(pages[j0].row) + '|' + creditOf(pages[j0].row) === key) j0++;
+        rows.push(j0 - i0 === 1 ? { p: p0 } : { group: pages.slice(i0, j0) }); i0 = j0;
+      }
+      rows.forEach(function (row) {
         if (y + 20 > FOOT) { foot(P); P = newPage('SUMMARY'); y = 96; }
-        var r = p.row, lab = (r.title || (r.kind === 'plan' ? 'Plan — ' + (r.floor_code || '') : r.kind === 'checklist' ? ((r.metadata.checklist || {}).name || 'Checklist') : r.kind.charAt(0).toUpperCase() + r.kind.slice(1) + ' page'));
-        if (r.kind === 'photo' && A.tag[r.id]) lab = A.tag[r.id] + ' · ' + lab;
-        if (catOf(r) !== 'survey') meta = [CATS[catOf(r)] || catOf(r), creditOf(r), meta].filter(Boolean).join(' · ');
-        var meta = [r.floor_code, r.room].filter(Boolean).join(' · ');
-        if (r.kind === 'checklist') { var pr = window.SurveyChecklist.progress(r.metadata.checklist); meta = (meta ? meta + ' · ' : '') + pr.done + '/' + pr.total + ' complete'; }
-        if (p.model && (p.model.marks || []).length) { var li = legendItems(p.model.marks), nd = li.reduce(function (s, it) { return s + (it.m.kind === 'photo' ? 0 : it.n); }, 0), np = (A.thumbsFor[r.id] || []).length; meta = [meta, nd ? nd + ' devices' : '', np ? np + ' photos' : ''].filter(Boolean).join(' · '); }
-        var pno = state.pageNo[r.id] || '';
-        P.text(String(pno), M, y, 9.5, F.b, C.INK); P.text(fit(F.r, lab, 9.5, W - 190), M + 28, y, 9.5, F.r, C.INK); if (meta) P.right(fit(F.r, meta, 8.5, 170), A4.w - M, y + 1, 8.5, F.r, C.MUT);
+        var lab, meta, pno;
+        if (row.group) {
+          var g = row.group, f0 = g[0].row, fl = g[g.length - 1].row, t0 = A.tag[f0.id], t1 = A.tag[fl.id];
+          lab = (t0 && t1 ? t0 + '–' + t1 + ' · ' : '') + (catOf(f0) !== 'survey' ? (CATS[catOf(f0)] || catOf(f0)) + ' photos' : 'Site photos') + ' (' + g.length + ')';
+          var places = []; g.forEach(function (x) { var pl = [x.row.floor_code, x.row.room].filter(Boolean).join(' · '); if (pl && places.indexOf(pl) < 0) places.push(pl); });
+          meta = [places.length > 2 ? places.slice(0, 2).join(', ') + ' +' + (places.length - 2) : places.join(', '), creditOf(f0) ? 'from ' + creditOf(f0) : ''].filter(Boolean).join(' · ');
+          var a = state.pageNo[f0.id] || '', b = state.pageNo[fl.id] || ''; pno = a && b && a !== b ? a + '–' + b : String(a);
+        } else {
+          var r = row.p.row, p = row.p;
+          lab = (r.title || (r.kind === 'plan' ? 'Plan — ' + (r.floor_code || '') : r.kind === 'checklist' ? ((r.metadata.checklist || {}).name || 'Checklist') : r.kind.charAt(0).toUpperCase() + r.kind.slice(1) + ' page'));
+          if (r.kind === 'photo' && A.tag[r.id]) lab = A.tag[r.id] + ' · ' + lab;
+          meta = [r.floor_code, r.room].filter(Boolean).join(' · ');
+          if (catOf(r) !== 'survey') meta = [CATS[catOf(r)] || catOf(r), creditOf(r) ? 'from ' + creditOf(r) : '', meta].filter(Boolean).join(' · ');
+          if (r.kind === 'checklist') { var pr = window.SurveyChecklist.progress(r.metadata.checklist); meta = (meta ? meta + ' · ' : '') + pr.done + '/' + pr.total + ' complete'; }
+          if (p.model && (p.model.marks || []).length) { var li = legendItems(p.model.marks), nd = li.reduce(function (s, it) { return s + (it.m.kind === 'photo' ? 0 : it.n); }, 0), np = (A.thumbsFor[r.id] || []).length; meta = [meta, nd ? nd + ' devices' : '', np ? np + ' photos' : ''].filter(Boolean).join(' · '); }
+          pno = String(state.pageNo[r.id] || '');
+        }
+        var pw = F.b.widthOfTextAtSize(pd(pno), 9.5) + 10;
+        P.text(pno, M, y, 9.5, F.b, C.INK); P.text(fit(F.r, lab, 9.5, W - 190 - Math.max(0, pw - 28)), M + Math.max(28, pw), y, 9.5, F.r, C.INK); if (meta) P.right(fit(F.r, meta, 8.5, 170), A4.w - M, y + 1, 8.5, F.r, C.MUT);
         P.hline(M, A4.w - M, y + 15, C.LINE, 0.4, 0.7); y += 20;
       });
       foot(P);
@@ -202,7 +222,8 @@ window.SurveyPdf = (function () {
         var title = r.title || (r.kind === 'plan' ? 'Plan — ' + (r.floor_code || '') : r.kind === 'photo' ? 'Site photo' : 'Notes'), sub = [r.floor_code, r.room].filter(Boolean).join(' · ');
         var tx = M; if (catOf(r) !== 'survey' && creditOf(r)) sub = [sub, 'from ' + creditOf(r)].filter(Boolean).join(' · ');
         if (r.kind === 'photo' && A.tag[r.id]) { tx += tagPill(PP, F, A.tag[r.id], M, 90) + 8; var pb = A.pinnedBy[r.id]; if (pb) { var pl = pb.plan.row; sub = [sub, 'pinned on ' + (pl.title || (pl.kind === 'plan' ? 'Plan — ' + (pl.floor_code || '') : 'Notes')) + (state.pageNo[pl.id] ? ' (p.' + state.pageNo[pl.id] + ')' : '') + (pb.mark && pb.mark.kind !== 'photo' ? ' at ' + (pb.mark.label || pb.mark.code) : '')].filter(Boolean).join(' · '); } }
-        PP.text(fit(F.b, title, 18, W - 120 - (tx - M)), tx, 88, 18, F.b, C.INK); if (sub) PP.right(fit(F.r, sub, 9, 300), A4.w - M, 94, 9, F.r, C.MUT);
+        var subTxt = sub ? fit(F.r, sub, 9, 300) : '', subW = subTxt ? F.r.widthOfTextAtSize(pd(subTxt), 9) + 16 : 0;   // v0.10.2 title never runs under the credit/pinned-on meta
+        PP.text(fit(F.b, title, 18, W - subW - (tx - M)), tx, 88, 18, F.b, C.INK); if (subTxt) PP.right(subTxt, A4.w - M, 94, 9, F.r, C.MUT);
         var top = 122, maxH = FOOT - top, maxW = W;
         if (!p.model) { PP.text('Page could not be rendered (image missing offline).', M, top, 9.5, F.r, C.MUT); foot(PP); continue; }
         var sp = p.model.space, px = sp.w >= sp.h ? 2600 : 1900, legend = legendItems(p.model.marks), pins = pinItems(p.model.marks), thumbs = (A.thumbsFor[r.id] || []).map(function (pid) { return A.byId[pid]; }).filter(function (t) { return t && t.model; });

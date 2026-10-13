@@ -43,7 +43,8 @@
   }
   async function projectRow() {
     if (S.project && S.project.id === S.pid) return S.project;
-    try { var r = await supa.from('projects').select('id,ref,name,client_name,address,postcode').eq('id', S.pid).maybeSingle(); if (r.data) S.project = r.data; } catch (e) { }
+    var PB = window.SonorProjectBar, bp = PB && PB.getProject ? PB.getProject(S.pid) : null; if (bp) { S.project = bp; return bp; }   // v0.10.3 offline: the bar's (cached) row first
+    try { var r = await Promise.race([supa.from('projects').select('id,ref,name,client_name,address,postcode').eq('id', S.pid).maybeSingle(), new Promise(function (res) { setTimeout(function () { res({}); }, 6000); })]); if (r.data) S.project = r.data; } catch (e) { }
     return S.project || { id: S.pid, name: '' };
   }
   function renderSessions() {
@@ -70,6 +71,7 @@
     renderStrip();
     window.SurveyStore.subscribePages(sid, onRemotePage);   // v0.9.1 — the iPad's marks land on the Mac (and back) as they are saved
     if (S.pages.length) openPage(S.pages[0].id); else showEmpty();
+    warmOffline(sid);   // v0.10.3 pull this survey's photos + plans into IndexedDB while there is signal, so a refresh with none still shows every page
   }
   // v0.9.1 — a page row changed in the cloud (another device, or our own echo)
   async function onRemotePage(row, ev) {
@@ -262,7 +264,7 @@
   // numbered per PROJECT (RFI 7 stays RFI 7 across survey sessions — it's the same RFI in Takeoffs Plan Notes): session pages + the published summary of earlier sessions
   function nextPinNumber(kind) { var n = 0; (S.pinFloor && S.pinFloor[kind]) && (n = S.pinFloor[kind]); S.pages.forEach(function (p) { ((p.ink && p.ink.marks) || []).forEach(function (m) { if (m.kind === 'pin' && m.pin === kind && m.n > n) n = m.n; }); }); var pg = ink.getPage(); ((pg && pg.marks) || []).forEach(function (m) { if (m.kind === 'pin' && m.pin === kind && m.n > n) n = m.n; }); return n + 1; }
   async function loadPinFloor() {   // highest pin number per type already published for this project (other sessions)
-    S.pinFloor = {}; try { var r = await supa.from('projects').select('metadata').eq('id', S.pid).maybeSingle(); var pins = (r.data && r.data.metadata && r.data.metadata.survey_summary && r.data.metadata.survey_summary.pins) || []; pins.forEach(function (q) { if (!S.session || q.session_id !== S.session.id) S.pinFloor[q.pin] = Math.max(S.pinFloor[q.pin] || 0, q.n || 0); }); } catch (e) { }
+    S.pinFloor = {}; try { var r = await Promise.race([supa.from('projects').select('metadata').eq('id', S.pid).maybeSingle(), new Promise(function (res) { setTimeout(function () { res({}); }, 6000); })]); var pins = (r.data && r.data.metadata && r.data.metadata.survey_summary && r.data.metadata.survey_summary.pins) || []; pins.forEach(function (q) { if (!S.session || q.session_id !== S.session.id) S.pinFloor[q.pin] = Math.max(S.pinFloor[q.pin] || 0, q.n || 0); }); } catch (e) { }
   }
   function pinDef(kind) { return CFG.pins.find(function (p) { return p.pin === kind; }); }
   function pinLabel(m) { return ((window.SonorInk && window.SonorInk.PIN_LABEL[m.pin]) || 'PIN') + (m.n ? ' ' + m.n : ''); }
@@ -284,6 +286,20 @@
     $('#svDelObj').hidden = !((ink.getTool() === 'select' || ink.getTool() === 'mark') && (ink.selected() || mk));
     var isPin = !!(mk && mk.kind === 'pin'); $('#svPinEdit').hidden = !isPin; if (isPin) $('#svPinEdit .lbl').textContent = 'Edit ' + pinLabel(mk); if (mk && mk.kind === 'pin') { $('#svMarkPhoto').hidden = false; }
     var so = ink.selected && ink.selected(); $('#svTextEdit').hidden = !(so && so.kind === 'text');
+  }
+  // v0.10.3 OFFLINE WARM-UP — the thumbnails already touch every page, but a photo taken on the other device or a plan not
+  // yet opened here would be missing with no signal. Idle-time, one at a time, never blocks the pen.
+  async function warmOffline(sid) {
+    if (!navigator.onLine) return;
+    var list = S.pages.slice();
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i]; if (!S.session || S.session.id !== sid) return;
+      try {
+        if (p.kind === 'photo' && p.photo_path && !S.bitmaps[p.id] && !(await window.SurveyStore.photoBlob(p.id))) await imageFor(p.id, p.photo_path);
+        else if (p.kind === 'plan' && p.plan_ref && !S.images['plan:' + p.plan_ref.plan_id]) { var key = 'plan:' + p.plan_ref.plan_id; S.images[key] = await window.SurveyPlan.loadImage(supa, { id: p.plan_ref.plan_id, storage_path: p.plan_ref.storage_path, mime_type: p.plan_ref.mime, filename: '', page_index: p.plan_ref.page_index }); }
+      } catch (e) { }
+      await new Promise(function (r) { setTimeout(r, 250); });
+    }
   }
   async function imageFor(key, path) {
     if (S.bitmaps[key]) return S.bitmaps[key];
@@ -552,7 +568,12 @@
     ['svTitle', 'svRoom', 'svPhotoCat', 'svPhotoFrom'].forEach(function (id) { $('#' + id).onchange = savePageMeta; $('#' + id).onblur = savePageMeta; });
     $('#svFloor').onchange = savePageMeta;
     $('#svHistory').onclick = showHistory;
-    $('#svRemove').onclick = function () { if (!S.page) return; if ($('#svRemove').dataset.armed) { delete $('#svRemove').dataset.armed; $('#svRemove').textContent = 'Remove page'; hidePage(); } else { $('#svRemove').dataset.armed = '1'; $('#svRemove').textContent = 'Remove — sure?'; setTimeout(function () { delete $('#svRemove').dataset.armed; $('#svRemove').textContent = 'Remove page'; }, 6000); } };
+    $('#svRemove').onclick = function () {   // v0.10.3 confirm sheet — the old two-tap "sure?" arm was hidden by the menu closing itself, so Remove "did nothing" (Bryn)
+      if (!S.page) return; var p = S.page, body = document.createElement('div'); body.className = 'sv-recv';
+      body.innerHTML = '<p>Remove <b>' + esc(p.title || (p.kind === 'photo' ? 'this photo' : 'this page')) + '</b> from the survey?</p><p class="muted">It is hidden, not deleted — Page history keeps it and any photo pins pointing at it are released.</p><div class="sv-pin-actions"><button type="button" class="btn" id="rmCancel">Keep it</button><button type="button" class="btn btn-primary" id="rmGo">Remove page</button></div>';
+      $('#rmCancel', body).onclick = closeModal; $('#rmGo', body).onclick = function () { closeModal(); hidePage(); };
+      openModal('Remove page', body);
+    };
     $('#svEngineer').onclick = function () { var cur = ''; try { cur = localStorage.getItem('sonor_survey_engineer') || ''; } catch (e) { } var v = prompt('Your name (stamped on new surveys + the report)', cur); if (v != null) { try { localStorage.setItem('sonor_survey_engineer', v.trim()); } catch (e) { } if (S.session) { S.session.engineer = v.trim(); window.SurveyStore.updateSession(S.pid, S.session.id, { engineer: v.trim() }); renderSessions(); } } };
     $('#svPublish').onclick = publish;
     document.addEventListener('keydown', function (e) {
