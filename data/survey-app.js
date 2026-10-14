@@ -416,6 +416,7 @@
     if (op.type === 'erase') op.ids.forEach(function (id) { S.erased.push(id); });
     if (op.type === 'add') { var i = S.erased.indexOf(op.stroke.id); if (i >= 0) S.erased.splice(i, 1); }
     if (op.type === 'object') { if (op.action === 'remove') S.erased.push(op.object.id); else { var j = S.erased.indexOf(op.object.id); if (j >= 0) S.erased.splice(j, 1); } }
+    if (op.type === 'mark' && op.action === 'lift') { refreshMarkUi(); toast('Lifted — drag it, lift the Pencil to drop', 1500); return; }   // v0.11.4
     if (op.type === 'mark' && op.action === 'select') { refreshMarkUi(); toast(op.dup ? 'Already a ' + (op.mark.label || 'device') + ' here — tap again to remove, drag a chip to add another' : 'Tap again to remove · press and hold to move', 2000); return; }   // v0.11.2 / 0.11.3
     if (op.type === 'mark' && op.action === 'add' && !op.undo && (op.mark.kind === 'block' || op.mark.kind === 'object') && !S.keepPlacing && ink.getTool() === 'mark' && /^(mark|object)$/.test(curTool())) {
       setTimeout(function () { setTool(S.toolBeforeMark || 'pen'); toast((op.mark.label || op.mark.code) + ' placed — pen', 1200); }, 0);   // v0.11.3 one-shot
@@ -588,7 +589,7 @@
     if (t === 'photopin') { ink.setMarkDef(Object.assign({}, CFG.photoMark, { c: '#1C1C1E' })); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('photopin'); $('#svPalette').hidden = true; return; }
     if (/^(mark|object)$/.test(t) && !/^(mark|object)$/.test(curTool())) S.toolBeforeMark = curTool() || 'pen';   // v0.11.3
     if (t === 'object') { var oact = $('.sv-obj-chip.active'); if (!oact) { var ofirst = $('.sv-obj-chip'); if (ofirst) ofirst.click(); return; } var od = (CFG.objects || []).find(function (m) { return m.code === oact.dataset.code; }); if (od) ink.setMarkDef({ code: od.code, kind: 'object', label: od.label, glyph: od.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }); ink.setTool('mark'); setToolBtn('object'); return; }
-    if (t === 'mark') { var act = $('.sv-mark-chip:not(.sv-obj-chip).active'); if (!act) { var first = $('.sv-mark-chip'); if (first) first.click(); return; } var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
+    if (t === 'mark') { var act = $('.sv-mark-chip:not(.sv-obj-chip):not(.sv-keep).active'); /* v0.11.5 the lit 🔒 chip is not a device — it left markDef empty and the Pencil panned instead of placing */ if (!act) { var first = $('.sv-mark-chip:not(.sv-keep):not(.sv-obj-chip)'); if (first) first.click(); return; } /* v0.11.5 never the 🔒 chip: it toggled Keep placing instead of arming a device */ var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
     ink.setTool(t); setToolBtn(t);
   }
   function updateUndo() { $('#svUndo').disabled = !ink.canUndo(); $('#svRedo').disabled = !ink.canRedo(); }

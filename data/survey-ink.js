@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.11.4 — Pencil press-and-hold lifts a mark, fingers only pan; v0.11.3 — same-device guard on tap, screenToPage / onPage for drag-to-place; v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
+/* Sonor Survey — INK ENGINE (app-local, v0.11.5 — pans keyed to their pointer, palm rejection around the Pencil; v0.11.4 — Pencil press-and-hold lifts a mark, fingers only pan; v0.11.3 — same-device guard on tap, screenToPage / onPage for drag-to-place; v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -122,7 +122,7 @@ window.SurveyInk = (function () {
     var view = { s: 1, tx: 0, ty: 0 };
     var tool = 'pen', colour = '#141414', width = 3.5, fingerDraw = false;
     var undo = [], redo = [];
-    var cur = null, pointers = new Map(), penActiveUntil = 0, pinch = null, panStart = null;
+    var cur = null, pointers = new Map(), penActiveUntil = 0, pinch = null, panStart = null, penDown = new Set();   // v0.11.5 penDown: Pencil pointers currently on the glass
     // v0.11.2 STABILISER — 1€ filter (Casiez 2012: the stylus-app standard) on page coords: steady when slow, no lag when fast.
     // levels: 0 off · 1 light (mincutoff 1.6, beta .02) · 2 strong (mincutoff 0.8, beta .01). Per-stroke state in cur.f.
     var stab = 0, STAB = [null, { mc: 1.6, beta: 0.02 }, { mc: 0.8, beta: 0.01 }], predictOn = true;
@@ -308,7 +308,11 @@ window.SurveyInk = (function () {
     function onDown(e) {
       if (!page) return;
       try { host.setPointerCapture && host.setPointerCapture(e.pointerId); } catch (err) { }
-      if (e.pointerType === 'pen') penActiveUntil = Date.now() + 1500;
+      if (e.pointerType === 'pen') {
+        penActiveUntil = Date.now() + 600; penDown.add(e.pointerId);
+        if (panStart && panStart.touch && Date.now() - panStart.t < 700) { view.tx = panStart.tx; view.ty = panStart.ty; panStart = null; settleView(); }   // v0.11.5 that touch was the palm landing first — undo its nudge
+      }
+      if (e.pointerType === 'touch' && (penDown.size || Date.now() < penActiveUntil)) return;   // v0.11.5 palm / knuckle while the Pencil is in play: ignored entirely
       if (e.pointerType === 'touch') {
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (pointers.size === 2) {
@@ -319,8 +323,8 @@ window.SurveyInk = (function () {
       }
       if (tool === 'mark') {   // v0.11.2: a mark is placed on pointer UP by a clean tap (no drag, < 600 ms) — a scrolling finger no longer drops
         var mp = toPage(e.clientX, e.clientY);                    // devices (Bryn: "too easy to accidentally insert"); tap an existing mark = select it,
-        if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }   // tap it AGAIN within 450 ms = remove (undoable)
-        if (e.pointerType === 'touch') { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }   // v0.11.4 fingers ALWAYS move the canvas (Bryn) — never place, never grab
+        if (!markDef) { panStart = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, t: Date.now(), touch: e.pointerType === 'touch' }; return; }   // tap it AGAIN within 450 ms = remove (undoable)
+        if (e.pointerType === 'touch') { panStart = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, t: Date.now(), touch: e.pointerType === 'touch' }; return; }   // v0.11.4 fingers ALWAYS move the canvas (Bryn) — never place, never grab
         tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), pt: mp, hit: markHit(mp), tx: view.tx, ty: view.ty, moved: false };
         if (tap.hit) {   // v0.11.4 PRESS-AND-HOLD the Pencil on a mark (350 ms, still) = pick it up and drag it; a quick tap = select / double-tap remove
           var th = tap; tap.hold = setTimeout(function () { if (tap !== th || th.moved) return; tap = null; selMark = th.hit.id; sel = null; mdrag = { id: th.id, start: th.pt, orig: { x: th.hit.x, y: th.hit.y } }; renderLive(); onChange({ type: 'mark', action: 'lift', mark: th.hit }); }, 350);
@@ -329,7 +333,7 @@ window.SurveyInk = (function () {
       }
       if (tool === 'text') {   // v0.6.0 — the app owns the editor: tap on a text object edits it, tap on paper starts a new one
         var tp = toPage(e.clientX, e.clientY), to = objectAt(tp);
-        if (tp[0] < 0 || tp[1] < 0 || tp[0] > page.space.w || tp[1] > page.space.h) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
+        if (tp[0] < 0 || tp[1] < 0 || tp[0] > page.space.w || tp[1] > page.space.h) { panStart = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, t: Date.now(), touch: e.pointerType === 'touch' }; return; }
         onChange({ type: 'text-tap', pt: tp, object: (to && to.kind === 'text') ? to : null }); e.preventDefault(); return;
       }
       if (tool === 'select') {
@@ -338,10 +342,10 @@ window.SurveyInk = (function () {
         selMark = null;
         var h = handleAt(pt), o = h ? selObj() : objectAt(pt);
         if (o) { sel = o.id; drag = { id: e.pointerId, mode: h ? 'resize' : 'move', handle: h && h.k, start: pt, orig: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }; renderLive(); e.preventDefault(); return; }
-        sel = null; renderLive(); panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return;
+        sel = null; renderLive(); panStart = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, t: Date.now(), touch: e.pointerType === 'touch' }; return;
       }
-      if (!isDrawPointer(e)) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
-      if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
+      if (!isDrawPointer(e)) { panStart = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, t: Date.now(), touch: e.pointerType === 'touch' }; return; }
+      if (e.pointerType === 'mouse' && (e.button === 1 || e.button === 2)) { panStart = { id: e.pointerId, x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, t: Date.now(), touch: e.pointerType === 'touch' }; return; }
       if (cur) end();
       begin(e); if (cur) { cur.byTouch = e.pointerType === 'touch'; cur.penId = e.pointerId; }
       e.preventDefault();
@@ -366,8 +370,8 @@ window.SurveyInk = (function () {
           if (o.kind === 'text' && g.size) o.size = Math.max(10, r2(g.size * o.w / g.w)); }   // v0.6.0 text scales with its box
         renderBg(); renderLive(); return;
       }
-      if (tap && tap.id === e.pointerId) { if (!tap.moved && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap.moved = true; clearTimeout(tap.hold); panStart = { x: tap.x, y: tap.y, tx: tap.tx, ty: tap.ty }; } }
-      if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); previewView(panStart); return; }
+      if (tap && tap.id === e.pointerId) { if (!tap.moved && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap.moved = true; clearTimeout(tap.hold); panStart = { id: tap.id, x: tap.x, y: tap.y, tx: tap.tx, ty: tap.ty, t: Date.now() }; } }
+      if (panStart && panStart.id === e.pointerId) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); previewView(panStart); return; }   // v0.11.5 keyed to ITS pointer — a resting palm no longer steals the Pencil's movement
       if (cur && cur.penId === e.pointerId) { move(e); e.preventDefault(); return; }
       if (tool === 'select' && e.pointerType === 'mouse' && !e.buttons) hoverCursor(toPage(e.clientX, e.clientY));
     }
@@ -378,8 +382,9 @@ window.SurveyInk = (function () {
       else c = 'grab';
       if (host.style.cursor !== c) host.style.cursor = c;
     }
-    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; if (tap) clearTimeout(tap.hold); tap = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
+    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; penDown.clear(); if (tap) clearTimeout(tap.hold); tap = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
     function onUp(e) {
+      if (e.pointerType === 'pen') { penDown.delete(e.pointerId); penActiveUntil = Date.now() + 600; }   // v0.11.5 touches are ignored for 0.6 s after the Pencil lifts, too (the palm is still there)
       if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2 && pinch) { pinch = null; settleView(); } }
       if (mdrag && mdrag.id === e.pointerId) {   // v0.4.3: one block — the old early `return` never cleared mdrag, so the first mark grabbed stayed glued to the pointer and nothing else could be selected
         var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start; mdrag = null;
@@ -403,7 +408,7 @@ window.SurveyInk = (function () {
         }
       }
       if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
-      if (panStart) { panStart = null; settleView(); }
+      if (panStart && panStart.id === e.pointerId) { panStart = null; settleView(); }
       if (cur && cur.penId === e.pointerId) end();
       if (cur && cur.eraser) end();
     }
@@ -448,7 +453,7 @@ window.SurveyInk = (function () {
 
     return {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
-      getPage: function () { return page; }, isDrawing: function () { return !!cur; }, setStabiliser: function (n) { stab = Math.max(0, Math.min(2, n | 0)); }, getStabiliser: function () { return stab; }, setPredict: function (on) { predictOn = !!on; },   // v0.11.1 — the app defers thumbnails while the pen is down
+      getPage: function () { return page; }, isDrawing: function () { return !!cur; }, _gestures: function () { return { tap: tap && { id: tap.id, moved: tap.moved, hit: !!tap.hit }, pan: panStart && { id: panStart.id, touch: !!panStart.touch }, mdrag: mdrag && mdrag.id, pen: Array.from(penDown), touches: pointers.size, pinch: !!pinch, markDef: markDef && markDef.code }; }, /* tests / debugging */ setStabiliser: function (n) { stab = Math.max(0, Math.min(2, n | 0)); }, getStabiliser: function () { return stab; }, setPredict: function (on) { predictOn = !!on; },   // v0.11.1 — the app defers thumbnails while the pen is down
       replaceContent: function (c) { if (!page) return; page.strokes = c.strokes || []; page.objects = c.objects || []; page.marks = c.marks || []; undo.length = 0; redo.length = 0; sel = null; selMark = null; drag = null; mdrag = null; render(); },   // v0.9.1 realtime: swap the content, keep the view
       setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
       pageToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; }, screenToPage: function (cx, cy) { return toPage(cx, cy); }, onPage: function (pt) { return !!page && pt[0] >= 0 && pt[1] >= 0 && pt[0] <= page.space.w && pt[1] <= page.space.h; }, getScale: function () { return view.s; },
