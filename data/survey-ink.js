@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.11.3 — same-device guard on tap, screenToPage / onPage for drag-to-place; v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
+/* Sonor Survey — INK ENGINE (app-local, v0.11.4 — Pencil press-and-hold lifts a mark, fingers only pan; v0.11.3 — same-device guard on tap, screenToPage / onPage for drag-to-place; v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -320,12 +320,11 @@ window.SurveyInk = (function () {
       if (tool === 'mark') {   // v0.11.2: a mark is placed on pointer UP by a clean tap (no drag, < 600 ms) — a scrolling finger no longer drops
         var mp = toPage(e.clientX, e.clientY);                    // devices (Bryn: "too easy to accidentally insert"); tap an existing mark = select it,
         if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }   // tap it AGAIN within 450 ms = remove (undoable)
-        if (e.pointerType === 'touch') {   // v0.11.3 "drop with the Pencil, move by finger" (Bryn): a finger never places — on a mark it grabs it, elsewhere it pans
-          var fh = markHit(mp);
-          if (fh) { selMark = fh.id; sel = null; mdrag = { id: e.pointerId, start: mp, orig: { x: fh.x, y: fh.y }, touch: true }; renderLive(); onChange({ type: 'mark', action: 'select', mark: fh, finger: true }); e.preventDefault(); return; }
-          panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return;
-        }
+        if (e.pointerType === 'touch') { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }   // v0.11.4 fingers ALWAYS move the canvas (Bryn) — never place, never grab
         tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), pt: mp, hit: markHit(mp), tx: view.tx, ty: view.ty, moved: false };
+        if (tap.hit) {   // v0.11.4 PRESS-AND-HOLD the Pencil on a mark (350 ms, still) = pick it up and drag it; a quick tap = select / double-tap remove
+          var th = tap; tap.hold = setTimeout(function () { if (tap !== th || th.moved) return; tap = null; selMark = th.hit.id; sel = null; mdrag = { id: th.id, start: th.pt, orig: { x: th.hit.x, y: th.hit.y } }; renderLive(); onChange({ type: 'mark', action: 'lift', mark: th.hit }); }, 350);
+        }
         e.preventDefault(); return;
       }
       if (tool === 'text') {   // v0.6.0 — the app owns the editor: tap on a text object edits it, tap on paper starts a new one
@@ -367,7 +366,7 @@ window.SurveyInk = (function () {
           if (o.kind === 'text' && g.size) o.size = Math.max(10, r2(g.size * o.w / g.w)); }   // v0.6.0 text scales with its box
         renderBg(); renderLive(); return;
       }
-      if (tap && tap.id === e.pointerId) { if (!tap.moved && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap.moved = true; panStart = { x: tap.x, y: tap.y, tx: tap.tx, ty: tap.ty }; } }
+      if (tap && tap.id === e.pointerId) { if (!tap.moved && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap.moved = true; clearTimeout(tap.hold); panStart = { x: tap.x, y: tap.y, tx: tap.tx, ty: tap.ty }; } }
       if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); previewView(panStart); return; }
       if (cur && cur.penId === e.pointerId) { move(e); e.preventDefault(); return; }
       if (tool === 'select' && e.pointerType === 'mouse' && !e.buttons) hoverCursor(toPage(e.clientX, e.clientY));
@@ -379,21 +378,18 @@ window.SurveyInk = (function () {
       else c = 'grab';
       if (host.style.cursor !== c) host.style.cursor = c;
     }
-    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; tap = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
+    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; if (tap) clearTimeout(tap.hold); tap = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
     function onUp(e) {
       if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2 && pinch) { pinch = null; settleView(); } }
       if (mdrag && mdrag.id === e.pointerId) {   // v0.4.3: one block — the old early `return` never cleared mdrag, so the first mark grabbed stayed glued to the pointer and nothing else could be selected
-        var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start, wasTouch = mdrag.touch; mdrag = null;
+        var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start; mdrag = null;
         if (mk2) { var mpt = toPage(e.clientX, e.clientY); mk2.x = r2(Math.max(0, Math.min(page.space.w, mg.x + mpt[0] - ms[0]))); mk2.y = r2(Math.max(0, Math.min(page.space.h, mg.y + mpt[1] - ms[1]))); }
         if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); }
-        else if (mk2 && wasTouch) {   // a finger TAP (no move) on a mark: second tap within 450 ms removes it, same as the Pencil
-          if (lastTap && lastTap.id === mk2.id && Date.now() - lastTap.t < 450) { lastTap = null; removeMark(mk2.id); onChange({ type: 'mark', action: 'removed-by-tap', mark: mk2 }); return; }
-          lastTap = { id: mk2.id, t: Date.now() };
-        }
+        else if (mk2) onChange({ type: 'mark', action: 'select', mark: mk2 });   // held but not moved: simply selected
         renderBg(); renderLive(); return;
       }
       if (tap && tap.id === e.pointerId) {
-        var tp0 = tap; tap = null;
+        var tp0 = tap; tap = null; clearTimeout(tp0.hold);
         if (!tp0.moved && Date.now() - tp0.t < 600) {
           if (tp0.hit) {
             if (lastTap && lastTap.id === tp0.hit.id && Date.now() - lastTap.t < 450) { lastTap = null; removeMark(tp0.hit.id); onChange({ type: 'mark', action: 'removed-by-tap', mark: tp0.hit }); }

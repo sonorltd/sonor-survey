@@ -18,10 +18,19 @@ await page.click('[data-tool="mark"]'); await chip('tv'); await page.waitForTime
 await tap('pen', box.x + 300, box.y + 300); console.log('pencil tap places:', await marks());
 await tap('touch', box.x + 500, box.y + 300); console.log('finger tap places nothing:', await marks());
 await tap('pen', box.x + 520, box.y + 300); console.log('pencil again (keep placing) places:', await marks(), 'tool', await tool());
-await drag('touch', box.x + 300, box.y + 300, box.x + 400, box.y + 350); console.log('finger drag on the TV moves it:', await marks());
-await tap('pen', box.x + 408, box.y + 352); console.log('pencil tap on the moved TV → select, not stack:', await marks(), 'sel', await page.evaluate(() => !!SurveyApp.ink().selectedMark()));
-await tap('pen', box.x + 408, box.y + 352); console.log('second pencil tap removes:', await marks());
-await tap('touch', box.x + 520, box.y + 300); await tap('touch', box.x + 520, box.y + 300); console.log('finger double-tap removes too:', await marks());
+await drag('touch', box.x + 300, box.y + 300, box.x + 400, box.y + 350); const panned = await page.evaluate(() => SurveyApp.ink().pageToScreen(0, 0)[0]);
+console.log('finger drag on a mark PANS (does not move it):', await marks(), 'view moved', panned !== 0);
+await drag('touch', box.x + 400, box.y + 350, box.x + 300, box.y + 300);   // pan back
+// Pencil press-and-hold on the TV → lift → drag → drop
+await ptr('pointerdown', 'pen', box.x + 300, box.y + 300, 9); await page.waitForTimeout(450); const lifted = await page.evaluate(() => !!SurveyApp.ink().selectedMark());
+for (let i = 1; i <= 5; i++) await ptr('pointermove', 'pen', box.x + 300 + 20 * i, box.y + 300 + 10 * i, 9); await ptr('pointerup', 'pen', box.x + 400, box.y + 350, 9); await page.waitForTimeout(150);
+console.log('pencil hold lifts:', lifted, '→ dragged to', await marks());
+// a quick pencil drag (no hold) on a mark pans instead of moving it
+const before2 = await marks(); await drag('pen', box.x + 400, box.y + 350, box.x + 500, box.y + 350); console.log('quick pencil drag = pan, mark unchanged:', JSON.stringify(await marks()) === JSON.stringify(before2));
+await drag('pen', box.x + 500, box.y + 350, box.x + 400, box.y + 350);   // pan back
+await tap('pen', box.x + 400, box.y + 350); console.log('pencil tap on the moved TV → select, not stack:', await marks(), 'sel', await page.evaluate(() => !!SurveyApp.ink().selectedMark()));
+await tap('pen', box.x + 400, box.y + 350); console.log('second pencil tap removes:', await marks());
+await tap('pen', box.x + 520, box.y + 300); await tap('pen', box.x + 520, box.y + 300); console.log('double tap the other → gone:', await marks());
 // one-shot mode
 await page.evaluate(() => document.querySelector('.sv-keep').click()); await chip('dl'); await tap('pen', box.x + 300, box.y + 500); await page.waitForTimeout(100); console.log('one-shot: placed', await marks(), 'tool back to', await tool());
 await tap('pen', box.x + 400, box.y + 500); console.log('…and the next pencil tap draws, not drops:', await marks());

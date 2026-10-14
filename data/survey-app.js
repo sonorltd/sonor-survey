@@ -416,10 +416,11 @@
     if (op.type === 'erase') op.ids.forEach(function (id) { S.erased.push(id); });
     if (op.type === 'add') { var i = S.erased.indexOf(op.stroke.id); if (i >= 0) S.erased.splice(i, 1); }
     if (op.type === 'object') { if (op.action === 'remove') S.erased.push(op.object.id); else { var j = S.erased.indexOf(op.object.id); if (j >= 0) S.erased.splice(j, 1); } }
-    if (op.type === 'mark' && op.action === 'select') { refreshMarkUi(); toast(op.dup ? 'Already a ' + (op.mark.label || 'device') + ' here — tap again to remove, drag a chip to add another' : op.finger ? 'Drag to move · tap again to remove' : 'Tap again to remove · finger drags to move', 2000); return; }   // v0.11.2 / 0.11.3
+    if (op.type === 'mark' && op.action === 'select') { refreshMarkUi(); toast(op.dup ? 'Already a ' + (op.mark.label || 'device') + ' here — tap again to remove, drag a chip to add another' : 'Tap again to remove · press and hold to move', 2000); return; }   // v0.11.2 / 0.11.3
     if (op.type === 'mark' && op.action === 'add' && !op.undo && (op.mark.kind === 'block' || op.mark.kind === 'object') && !S.keepPlacing && ink.getTool() === 'mark' && /^(mark|object)$/.test(curTool())) {
       setTimeout(function () { setTool(S.toolBeforeMark || 'pen'); toast((op.mark.label || op.mark.code) + ' placed — pen', 1200); }, 0);   // v0.11.3 one-shot
     }
+    if (op.type === 'mark' && op.action === 'lift') { refreshMarkUi(); toast('Picked up — drag it, lift to drop', 1500); return; }   // v0.11.4
     if (op.type === 'mark' && op.action === 'removed-by-tap') { toast((op.mark.label || 'Mark') + ' removed — ↶ to undo', 2500); return; }
     if (op.type === 'mark') { if (op.action === 'remove') S.erased.push(op.mark.id); else { var k = S.erased.indexOf(op.mark.id); if (k >= 0) S.erased.splice(k, 1); }
       if (op.action === 'add' && op.mark.kind === 'photo' && !op.undo && !op.mark.photo_page_id) { S.pendingPhotoMark = op.mark.id; setTimeout(function () { $('#svPhotoIn').click(); }, 50); }
@@ -514,7 +515,7 @@
     //   · the same device already under the tap is selected, never stacked (engine nearSame)
     S.keepPlacing = true; try { S.keepPlacing = localStorage.getItem('sonor_survey_keep') !== '0'; } catch (e) { }   // default ON: the Pencil-drops / finger-moves rule makes accidents rare; unlock for one-per-tap
     function keepBtn(pal) {
-      var k = document.createElement('button'); k.type = 'button'; k.className = 'btn sv-mark-chip sv-keep' + (S.keepPlacing ? ' active' : ''); k.innerHTML = '<span class="sv-mark-dot sv-keep-dot">🔒</span>Keep placing'; k.title = 'Locked: every tap places another. Unlocked: one device per tap, then back to the pen. Dragging a chip onto the plan always works.';
+      var k = document.createElement('button'); k.type = 'button'; k.className = 'btn sv-mark-chip sv-keep' + (S.keepPlacing ? ' active' : ''); k.innerHTML = '<span class="sv-mark-dot sv-keep-dot">🔒</span>Keep placing'; k.title = 'Locked: every Pencil tap places another. Unlocked: one device per tap, then back to the pen. Press and hold a mark to move it; fingers always move the canvas.';
       k.onclick = function () { S.keepPlacing = !S.keepPlacing; $$('.sv-keep').forEach(function (x) { x.classList.toggle('active', S.keepPlacing); }); try { localStorage.setItem('sonor_survey_keep', S.keepPlacing ? '1' : '0'); } catch (e) { } toast(S.keepPlacing ? 'Keep placing — every tap drops one (tap 🔒 to stop)' : 'One per tap — the pen comes back after each device'); };
       pal.appendChild(k); var gap = document.createElement('span'); gap.className = 'sv-mark-gap'; pal.appendChild(gap);
     }
