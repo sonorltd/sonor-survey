@@ -416,7 +416,10 @@
     if (op.type === 'erase') op.ids.forEach(function (id) { S.erased.push(id); });
     if (op.type === 'add') { var i = S.erased.indexOf(op.stroke.id); if (i >= 0) S.erased.splice(i, 1); }
     if (op.type === 'object') { if (op.action === 'remove') S.erased.push(op.object.id); else { var j = S.erased.indexOf(op.object.id); if (j >= 0) S.erased.splice(j, 1); } }
-    if (op.type === 'mark' && op.action === 'select') { refreshMarkUi(); toast('Tap again to remove · Select to move', 1800); return; }   // v0.11.2
+    if (op.type === 'mark' && op.action === 'select') { refreshMarkUi(); toast(op.dup ? 'Already a ' + (op.mark.label || 'device') + ' here — tap again to remove, drag a chip to add another' : op.finger ? 'Drag to move · tap again to remove' : 'Tap again to remove · finger drags to move', 2000); return; }   // v0.11.2 / 0.11.3
+    if (op.type === 'mark' && op.action === 'add' && !op.undo && (op.mark.kind === 'block' || op.mark.kind === 'object') && !S.keepPlacing && ink.getTool() === 'mark' && /^(mark|object)$/.test(curTool())) {
+      setTimeout(function () { setTool(S.toolBeforeMark || 'pen'); toast((op.mark.label || op.mark.code) + ' placed — pen', 1200); }, 0);   // v0.11.3 one-shot
+    }
     if (op.type === 'mark' && op.action === 'removed-by-tap') { toast((op.mark.label || 'Mark') + ' removed — ↶ to undo', 2500); return; }
     if (op.type === 'mark') { if (op.action === 'remove') S.erased.push(op.mark.id); else { var k = S.erased.indexOf(op.mark.id); if (k >= 0) S.erased.splice(k, 1); }
       if (op.action === 'add' && op.mark.kind === 'photo' && !op.undo && !op.mark.photo_page_id) { S.pendingPhotoMark = op.mark.id; setTimeout(function () { $('#svPhotoIn').click(); }, 50); }
@@ -505,20 +508,55 @@
     var ws = $('#svWidths'); CFG.widths.forEach(function (w, i) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-w' + (i === 1 ? ' active' : ''); b.textContent = w.k; b.title = 'Width ' + w.w; b.onclick = function () { ink.setWidth(w.w); $$('.sv-w').forEach(function (x) { x.classList.toggle('active', x === b); }); }; ws.appendChild(b); });
     $('#svInkName').textContent = CFG.inks[0].n;
     setTimeout(function () { setToolBtn('pen'); }, 0);   // v0.7.0 the context strip reflects the initial tool
+    // v0.11.3 PLACING, MADE DELIBERATE (Bryn: "device dropping needs to be more intelligent, its easy to just keep dropping new ones")
+    //   · DRAG a chip onto the plan — the explicit way: a ghost follows the finger, drops on release, the tool is untouched
+    //   · TAP-to-place is ONE-SHOT: after a device lands the pen comes back; 🔒 Keep placing locks the palette for runs (12 downlights)
+    //   · the same device already under the tap is selected, never stacked (engine nearSame)
+    S.keepPlacing = true; try { S.keepPlacing = localStorage.getItem('sonor_survey_keep') !== '0'; } catch (e) { }   // default ON: the Pencil-drops / finger-moves rule makes accidents rare; unlock for one-per-tap
+    function keepBtn(pal) {
+      var k = document.createElement('button'); k.type = 'button'; k.className = 'btn sv-mark-chip sv-keep' + (S.keepPlacing ? ' active' : ''); k.innerHTML = '<span class="sv-mark-dot sv-keep-dot">🔒</span>Keep placing'; k.title = 'Locked: every tap places another. Unlocked: one device per tap, then back to the pen. Dragging a chip onto the plan always works.';
+      k.onclick = function () { S.keepPlacing = !S.keepPlacing; $$('.sv-keep').forEach(function (x) { x.classList.toggle('active', S.keepPlacing); }); try { localStorage.setItem('sonor_survey_keep', S.keepPlacing ? '1' : '0'); } catch (e) { } toast(S.keepPlacing ? 'Keep placing — every tap drops one (tap 🔒 to stop)' : 'One per tap — the pen comes back after each device'); };
+      pal.appendChild(k); var gap = document.createElement('span'); gap.className = 'sv-mark-gap'; pal.appendChild(gap);
+    }
+    function chipDrag(b, defFor) {   // drag a palette chip onto the page → mark lands under the finger; a plain tap still arms the tool (onclick)
+      var st = null, ghost = null;   // window listeners while live (pointer capture on a button inside the scrolling strip is not reliable)
+      b.addEventListener('pointerdown', function (e) { st = { id: e.pointerId, x: e.clientX, y: e.clientY, live: false }; window.addEventListener('pointermove', mv, true); window.addEventListener('pointerup', done, true); window.addEventListener('pointercancel', done, true); });
+      function mv(e) {
+        if (!st || st.id !== e.pointerId) return;
+        if (!st.live) { var ddx = e.clientX - st.x, ddy = e.clientY - st.y; if (ddy > -10 || Math.abs(ddy) < Math.abs(ddx)) return; st.live = true;   // lift UP out of the strip to drag; sideways scrolls it
+          ghost = b.cloneNode(true); ghost.className += ' sv-chip-ghost'; document.body.appendChild(ghost); }
+        ghost.style.left = (e.clientX - 20) + 'px'; ghost.style.top = (e.clientY - 44) + 'px';   // held above the finger so you can see the target
+        var pt = ink.screenToPage(e.clientX, e.clientY - 24); ghost.classList.toggle('sv-chip-ghost-ok', ink.onPage(pt)); e.preventDefault();
+      }
+      function done(e) {
+        if (!st || st.id !== e.pointerId) return; var was = st; st = null;
+        window.removeEventListener('pointermove', mv, true); window.removeEventListener('pointerup', done, true); window.removeEventListener('pointercancel', done, true);
+        if (ghost) { ghost.remove(); ghost = null; }
+        if (!was.live || e.type === 'pointercancel') return;
+        b.dataset.swallow = '1'; setTimeout(function () { delete b.dataset.swallow; }, 0);   // the click after a drag must not arm the tool
+        e.stopPropagation(); e.preventDefault();   // the canvas must not see this pointerup as a tap of its own
+        var pt = ink.screenToPage(e.clientX, e.clientY - 24); if (!ink.onPage(pt)) return;
+        var def = defFor(); ink.setMarkDef(def); var m = ink.addMarkAt(def, pt); if (m) toast((def.label || def.code) + ' placed', 1200);
+      }
+    }
+    keepBtn($('#svMarks'));
     var pal = $('#svMarks'), lastNn = null; CFG.marks.forEach(function (d) {
       if (lastNn !== null && d.nn !== lastNn) { var gap = document.createElement('span'); gap.className = 'sv-mark-gap'; pal.appendChild(gap); } lastNn = d.nn;
       var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-mark-chip'; b.dataset.code = d.code;
       var col = d.nn ? svcColour(d.nn) : '#1C1C1E'; b.style.setProperty('--mk', col); b.innerHTML = '<span class="sv-mark-dot">' + esc(d.glyph) + '</span>' + esc(d.label);
-      b.onclick = function () { var def = Object.assign({}, d, { c: col }); $$('.sv-mark-chip:not(.sv-obj-chip)').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('mark'); };
+      b.onclick = function () { if (b.dataset.swallow) return; if (!/^(mark|object)$/.test(curTool())) S.toolBeforeMark = curTool() || 'pen'; var def = Object.assign({}, d, { c: col }); $$('.sv-mark-chip:not(.sv-obj-chip):not(.sv-keep)').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('mark'); };
+      chipDrag(b, function () { return Object.assign({}, d, { c: col }); });
       pal.appendChild(b);
     });
     // v0.11.0 🧱 OBJECTS palette — site objects (radiator, steel, loft hatch, existing kit…), grouped, graphite, kind 'object'
+    keepBtn($('#svObjects'));
     var opal = $('#svObjects'), lastGroup = null; (CFG.objects || []).forEach(function (d) {
       if (lastGroup !== null && d.group !== lastGroup) { var ogap = document.createElement('span'); ogap.className = 'sv-mark-gap'; opal.appendChild(ogap); } 
       if (d.group !== lastGroup) { var gl = document.createElement('span'); gl.className = 'sv-obj-group'; gl.textContent = d.group; opal.appendChild(gl); } lastGroup = d.group;
       var ob = document.createElement('button'); ob.type = 'button'; ob.className = 'btn sv-mark-chip sv-obj-chip'; ob.dataset.code = d.code; ob.title = d.hint || d.label;
       ob.style.setProperty('--mk', CFG.objectColour || '#6E6E73'); ob.innerHTML = '<span class="sv-mark-dot sv-obj-dot">' + esc(d.glyph) + '</span>' + esc(d.label);
-      ob.onclick = function () { var def = { code: d.code, kind: 'object', label: d.label, glyph: d.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }; $$('.sv-obj-chip').forEach(function (x) { x.classList.toggle('active', x === ob); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('object'); };
+      ob.onclick = function () { if (ob.dataset.swallow) return; if (!/^(mark|object)$/.test(curTool())) S.toolBeforeMark = curTool() || 'pen'; var def = { code: d.code, kind: 'object', label: d.label, glyph: d.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }; $$('.sv-obj-chip').forEach(function (x) { x.classList.toggle('active', x === ob); }); ink.setMarkDef(def); ink.setTool('mark'); setToolBtn('object'); };
+      chipDrag(ob, function () { return { code: d.code, kind: 'object', label: d.label, glyph: d.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }; });
       opal.appendChild(ob);
     });
     var pm = $('#svPinsMenu'); CFG.pins.forEach(function (d) {
@@ -547,6 +585,7 @@
     if (t === 'text') { ink.setTool('text'); setToolBtn('text'); return; }
     if (/^pin:/.test(t)) { var pk = t.slice(4), pdf = pinDef(pk); if (!pdf) return; if (!S.pinFloor) loadPinFloor(); ink.setMarkDef({ code: 'pin-' + pk, kind: 'pin', pin: pk, label: pdf.label, glyph: pdf.glyph, c: pdf.c, nn: null }); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('pin:' + pk); S.pinKind = pk; $('#svMoreMenu').hidden = true; return; }
     if (t === 'photopin') { ink.setMarkDef(Object.assign({}, CFG.photoMark, { c: '#1C1C1E' })); ink.setTool('mark'); $$('.sv-mark-chip').forEach(function (x) { x.classList.remove('active'); }); setToolBtn('photopin'); $('#svPalette').hidden = true; return; }
+    if (/^(mark|object)$/.test(t) && !/^(mark|object)$/.test(curTool())) S.toolBeforeMark = curTool() || 'pen';   // v0.11.3
     if (t === 'object') { var oact = $('.sv-obj-chip.active'); if (!oact) { var ofirst = $('.sv-obj-chip'); if (ofirst) ofirst.click(); return; } var od = (CFG.objects || []).find(function (m) { return m.code === oact.dataset.code; }); if (od) ink.setMarkDef({ code: od.code, kind: 'object', label: od.label, glyph: od.glyph, c: CFG.objectColour || '#6E6E73', nn: null, block_code: null }); ink.setTool('mark'); setToolBtn('object'); return; }
     if (t === 'mark') { var act = $('.sv-mark-chip:not(.sv-obj-chip).active'); if (!act) { var first = $('.sv-mark-chip'); if (first) first.click(); return; } var d = CFG.marks.find(function (m) { return m.code === act.dataset.code; }); if (d) ink.setMarkDef(Object.assign({}, d, { c: d.nn ? svcColour(d.nn) : '#1C1C1E' })); }
     ink.setTool(t); setToolBtn(t);

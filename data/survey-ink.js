@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
+/* Sonor Survey — INK ENGINE (app-local, v0.11.3 — same-device guard on tap, screenToPage / onPage for drag-to-place; v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -203,6 +203,11 @@ window.SurveyInk = (function () {
     function objectAt(pt) { var os = page.objects || []; for (var i = os.length - 1; i >= 0; i--) { var o = os[i]; if (pt[0] >= o.x && pt[0] <= o.x + o.w && pt[1] >= o.y && pt[1] <= o.y + o.h) return o; } return null; }
     function handleAt(pt) { var o = selObj(); if (!o) return null; var r = 14 / view.s; return handles(o).find(function (h) { return Math.hypot(h.x - pt[0], h.y - pt[1]) <= r; }) || null; }
     // v0.5.1 hit test: a photo pin is a lollipop — the tip (m.y) AND the camera body (m.y − 1.65r) both select it
+    function nearSame(def, pt) {   // v0.11.3 — a mark of the same code within ~3 radii of the tap (≈ a device on the same spot)
+      if (!SI || !def || !page) return null; var r = SI.MARK_R * 3, ms = page.marks || [];
+      for (var i = ms.length - 1; i >= 0; i--) { var m = ms[i]; if (m.code === def.code && m.kind === (def.kind || 'block') && Math.hypot(m.x - pt[0], m.y - pt[1]) <= r) return m; }
+      return null;
+    }
     function markHit(pt) {
       if (!SI) return null; var r = SI.MARK_R, ms = page.marks || [];
       for (var i = ms.length - 1; i >= 0; i--) { var m = ms[i], dy;
@@ -315,6 +320,11 @@ window.SurveyInk = (function () {
       if (tool === 'mark') {   // v0.11.2: a mark is placed on pointer UP by a clean tap (no drag, < 600 ms) — a scrolling finger no longer drops
         var mp = toPage(e.clientX, e.clientY);                    // devices (Bryn: "too easy to accidentally insert"); tap an existing mark = select it,
         if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }   // tap it AGAIN within 450 ms = remove (undoable)
+        if (e.pointerType === 'touch') {   // v0.11.3 "drop with the Pencil, move by finger" (Bryn): a finger never places — on a mark it grabs it, elsewhere it pans
+          var fh = markHit(mp);
+          if (fh) { selMark = fh.id; sel = null; mdrag = { id: e.pointerId, start: mp, orig: { x: fh.x, y: fh.y }, touch: true }; renderLive(); onChange({ type: 'mark', action: 'select', mark: fh, finger: true }); e.preventDefault(); return; }
+          panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return;
+        }
         tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), pt: mp, hit: markHit(mp), tx: view.tx, ty: view.ty, moved: false };
         e.preventDefault(); return;
       }
@@ -373,9 +383,13 @@ window.SurveyInk = (function () {
     function onUp(e) {
       if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2 && pinch) { pinch = null; settleView(); } }
       if (mdrag && mdrag.id === e.pointerId) {   // v0.4.3: one block — the old early `return` never cleared mdrag, so the first mark grabbed stayed glued to the pointer and nothing else could be selected
-        var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start; mdrag = null;
+        var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start, wasTouch = mdrag.touch; mdrag = null;
         if (mk2) { var mpt = toPage(e.clientX, e.clientY); mk2.x = r2(Math.max(0, Math.min(page.space.w, mg.x + mpt[0] - ms[0]))); mk2.y = r2(Math.max(0, Math.min(page.space.h, mg.y + mpt[1] - ms[1]))); }
         if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); }
+        else if (mk2 && wasTouch) {   // a finger TAP (no move) on a mark: second tap within 450 ms removes it, same as the Pencil
+          if (lastTap && lastTap.id === mk2.id && Date.now() - lastTap.t < 450) { lastTap = null; removeMark(mk2.id); onChange({ type: 'mark', action: 'removed-by-tap', mark: mk2 }); return; }
+          lastTap = { id: mk2.id, t: Date.now() };
+        }
         renderBg(); renderLive(); return;
       }
       if (tap && tap.id === e.pointerId) {
@@ -384,7 +398,12 @@ window.SurveyInk = (function () {
           if (tp0.hit) {
             if (lastTap && lastTap.id === tp0.hit.id && Date.now() - lastTap.t < 450) { lastTap = null; removeMark(tp0.hit.id); onChange({ type: 'mark', action: 'removed-by-tap', mark: tp0.hit }); }
             else { lastTap = { id: tp0.hit.id, t: Date.now() }; selMark = tp0.hit.id; sel = null; renderLive(); onChange({ type: 'mark', action: 'select', mark: tp0.hit }); }
-          } else if (tp0.pt[0] >= 0 && tp0.pt[1] >= 0 && tp0.pt[0] <= page.space.w && tp0.pt[1] <= page.space.h) { lastTap = null; addMark(markDef, tp0.pt); }
+          } else if (tp0.pt[0] >= 0 && tp0.pt[1] >= 0 && tp0.pt[0] <= page.space.w && tp0.pt[1] <= page.space.h) {
+            lastTap = null;
+            var dup = nearSame(markDef, tp0.pt);   // v0.11.3 the same device already within reach → select it, don't stack another on top
+            if (dup) { selMark = dup.id; sel = null; renderLive(); lastTap = { id: dup.id, t: Date.now() }; onChange({ type: 'mark', action: 'select', mark: dup, dup: true }); }
+            else addMark(markDef, tp0.pt);
+          }
         }
       }
       if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
@@ -436,7 +455,7 @@ window.SurveyInk = (function () {
       getPage: function () { return page; }, isDrawing: function () { return !!cur; }, setStabiliser: function (n) { stab = Math.max(0, Math.min(2, n | 0)); }, getStabiliser: function () { return stab; }, setPredict: function (on) { predictOn = !!on; },   // v0.11.1 — the app defers thumbnails while the pen is down
       replaceContent: function (c) { if (!page) return; page.strokes = c.strokes || []; page.objects = c.objects || []; page.marks = c.marks || []; undo.length = 0; redo.length = 0; sel = null; selMark = null; drag = null; mdrag = null; render(); },   // v0.9.1 realtime: swap the content, keep the view
       setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
-      pageToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; }, getScale: function () { return view.s; },
+      pageToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; }, screenToPage: function (cx, cy) { return toPage(cx, cy); }, onPage: function (pt) { return !!page && pt[0] >= 0 && pt[1] >= 0 && pt[0] <= page.space.w && pt[1] <= page.space.h; }, getScale: function () { return view.s; },
       setLabels: function (l) { labels = l || null; renderBg(); }, getLabels: function () { return labels; },
       clearSelection: function () { sel = null; selMark = null; drag = null; mdrag = null; renderLive(); },
       setMarkDef: function (d) { markDef = d; selMark = null; renderLive(); }, selectedMark: selMarkObj, selectMark: function (id) { selMark = id; renderLive(); }, addMarkAt: addMark,

@@ -106,7 +106,11 @@ html { overflow: hidden; height: 100%; }
 .sv-mark-chip { min-height: 32px; padding: 3px 9px 3px 5px; font-size: 12px; white-space: nowrap; }
 .sv-mark-gap { width: 1px; align-self: stretch; background: var(--border); margin: 0 3px; flex: none; }
 .sv-mark-chip.active { border-color: var(--mk); box-shadow: 0 0 0 1px var(--mk); }
-.sv-obj-dot { border-radius: 5px; font-size: 8.5px; }   /* v0.11.0 site objects: graphite square, never a service colour */
+.sv-obj-dot { border-radius: 5px; font-size: 8.5px; }
+.sv-keep .sv-keep-dot { background: transparent; font-size: 13px; } .sv-keep.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sv-chip-ghost { position: fixed; z-index: 60; pointer-events: none; opacity: .85; transform: scale(1.15); transform-origin: left top; box-shadow: 0 10px 28px rgba(0,0,0,.45); }   /* v0.11.3 drag-to-place */
+.sv-chip-ghost.sv-chip-ghost-ok { outline: 2px solid var(--accent); }
+.sv-mark-chip { touch-action: pan-x; }   /* sideways = the strip scrolls (browser); UP out of the strip = drag-to-place (chipDrag) */   /* v0.11.0 site objects: graphite square, never a service colour */
 .sv-obj-group { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary, #9a9a9a); align-self: center; margin: 0 2px 0 4px; white-space: nowrap; }
 .sv-mark-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 50%; background: var(--mk); color: #fff; font-size: 9px; font-weight: 700; margin-right: 6px; padding: 0 4px; }
 .sv-stage.sv-drop .sv-canvas, .sv-stage.sv-drop #svCheck { outline: 2px dashed var(--accent); outline-offset: -6px; }
@@ -346,7 +350,7 @@ body.sv-focus .sv-focus-chip { display: flex; }
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.11.2';
+  const APP_VERSION = '0.11.3';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>
