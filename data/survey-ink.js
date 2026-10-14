@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
+/* Sonor Survey — INK ENGINE (app-local, v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -174,6 +174,14 @@ window.SurveyInk = (function () {
       }
     }
     function render() { renderBg(); renderInk(); renderLive(); }
+    // v0.11.1 — pinch / pan PREVIEW: the three canvases are moved with a CSS transform relative to the view they were last
+    // painted at (GPU, free) instead of repainting the 4600 px plan on every finger move; one real render when the gesture ends.
+    var previewing = false;
+    function previewView(g) {
+      var f = view.s / (g.s || view.s), tx = view.tx - g.tx * f, ty = view.ty - g.ty * f;   // a pan has no scale; a pinch does
+      [bg, inkC, live].forEach(function (c) { c.style.transformOrigin = '0 0'; c.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + f + ')'; }); previewing = true;
+    }
+    function settleView() { if (!previewing) return; previewing = false; [bg, inkC, live].forEach(function (c) { c.style.transform = ''; }); render(); }
 
     // ---------- objects ----------
     function selObj() { return sel && page ? (page.objects || []).find(function (o) { return o.id === sel; }) : null; }
@@ -222,8 +230,15 @@ window.SurveyInk = (function () {
     function begin(e) {
       var pt = toPage(e.clientX, e.clientY);
       if (tool === 'eraser') { cur = { eraser: true, r: 14 / view.s }; eraseAt(pt); return; }
-      cur = { id: uid(), tool: tool === 'hl' ? 'hl' : 'pen', c: colour, w: width, t: Date.now(), pts: [[r2(pt[0]), r2(pt[1]), r2(e.pressure || 0.5)]] };
+      cur = { id: uid(), tool: tool === 'hl' ? 'hl' : 'pen', c: colour, w: width, t: Date.now(), pts: [[r2(pt[0]), r2(pt[1]), r2(e.pressure || 0.5)]], drawn: 1 };
       renderLive();
+    }
+    // v0.11.1 SMOOTH PEN — the live layer gets only the NEW segments per pointer event (SonorInk.drawStrokeSegments), never a
+    // repaint of the whole stroke; a highlighter still repaints (multiply blend would double up on overlaps).
+    function liveAppend() {
+      if (!cur || cur.eraser) return;
+      if (cur.tool === 'hl' || !SI || !SI.drawStrokeSegments) { renderLive(); return; }
+      applyView(lvx); SI.drawStrokeSegments(lvx, cur, cur.drawn, cur.pts.length, false); cur.drawn = cur.pts.length;
     }
     function move(e) {
       if (!cur) return;
@@ -235,7 +250,7 @@ window.SurveyInk = (function () {
         if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) * view.s < 0.9) continue;
         cur.pts.push([r2(pt[0]), r2(pt[1]), r2(evs[i].pressure || 0.5)]);
       }
-      if (!cur.eraser) renderLive();
+      if (!cur.eraser) liveAppend();
     }
     function end() {
       if (!cur) return;
@@ -304,7 +319,7 @@ window.SurveyInk = (function () {
         var a = Array.from(pointers.values()), d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), cx = (a[0].x + a[1].x) / 2, cy = (a[0].y + a[1].y) / 2;
         var f = Math.max(0.1, Math.min(12, pinch.s * (d / pinch.d))) / pinch.s;
         var r = host.getBoundingClientRect(), px = pinch.cx - r.left, py = pinch.cy - r.top;
-        view.s = pinch.s * f; view.tx = px - (px - pinch.tx) * f + (cx - pinch.cx); view.ty = py - (py - pinch.ty) * f + (cy - pinch.cy); clampView(); render(); return;
+        view.s = pinch.s * f; view.tx = px - (px - pinch.tx) * f + (cx - pinch.cx); view.ty = py - (py - pinch.ty) * f + (cy - pinch.cy); clampView(); previewView(pinch); return;
       }
       if (mdrag && mdrag.id === e.pointerId) { var mm = selMarkObj(); if (mm) { var mpt = toPage(e.clientX, e.clientY); mm.x = r2(mdrag.orig.x + mpt[0] - mdrag.start[0]); mm.y = r2(mdrag.orig.y + mpt[1] - mdrag.start[1]); renderBg(); renderLive(); } return; }
       if (drag && drag.id === e.pointerId) {
@@ -318,7 +333,7 @@ window.SurveyInk = (function () {
           if (o.kind === 'text' && g.size) o.size = Math.max(10, r2(g.size * o.w / g.w)); }   // v0.6.0 text scales with its box
         renderBg(); renderLive(); return;
       }
-      if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); render(); return; }
+      if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); previewView(panStart); return; }
       if (cur && cur.penId === e.pointerId) { move(e); e.preventDefault(); return; }
       if (tool === 'select' && e.pointerType === 'mouse' && !e.buttons) hoverCursor(toPage(e.clientX, e.clientY));
     }
@@ -329,9 +344,9 @@ window.SurveyInk = (function () {
       else c = 'grab';
       if (host.style.cursor !== c) host.style.cursor = c;
     }
-    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; pointers.clear(); clear(lvx); renderLive(); }
+    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
     function onUp(e) {
-      if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null; }
+      if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2 && pinch) { pinch = null; settleView(); } }
       if (mdrag && mdrag.id === e.pointerId) {   // v0.4.3: one block — the old early `return` never cleared mdrag, so the first mark grabbed stayed glued to the pointer and nothing else could be selected
         var mk2 = selMarkObj(), mg = mdrag.orig, ms = mdrag.start; mdrag = null;
         if (mk2) { var mpt = toPage(e.clientX, e.clientY); mk2.x = r2(Math.max(0, Math.min(page.space.w, mg.x + mpt[0] - ms[0]))); mk2.y = r2(Math.max(0, Math.min(page.space.h, mg.y + mpt[1] - ms[1]))); }
@@ -339,7 +354,7 @@ window.SurveyInk = (function () {
         renderBg(); renderLive(); return;
       }
       if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
-      if (panStart) panStart = null;
+      if (panStart) { panStart = null; settleView(); }
       if (cur && cur.penId === e.pointerId) end();
       if (cur && cur.eraser) end();
     }
@@ -384,7 +399,7 @@ window.SurveyInk = (function () {
 
     return {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
-      getPage: function () { return page; },
+      getPage: function () { return page; }, isDrawing: function () { return !!cur; },   // v0.11.1 — the app defers thumbnails while the pen is down
       replaceContent: function (c) { if (!page) return; page.strokes = c.strokes || []; page.objects = c.objects || []; page.marks = c.marks || []; undo.length = 0; redo.length = 0; sel = null; selMark = null; drag = null; mdrag = null; render(); },   // v0.9.1 realtime: swap the content, keep the view
       setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
       pageToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; }, getScale: function () { return view.s; },

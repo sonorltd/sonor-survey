@@ -1,4 +1,4 @@
-/* Sonor Survey — STORE (v0.11.0 — objects_by_floor in the summary; was v0.10.3 — timed reads fall back to cache on bad signal; was v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
+/* Sonor Survey — STORE (v0.11.1 — optimistic known-version before the CAS update; v0.11.0 — objects_by_floor in the summary; was v0.10.3 — timed reads fall back to cache on bad signal; was v0.9.1 — cloud-first page list with local ops overlaid; realtime survey_pages channel; was v0.6.0 pins → survey_summary.pins + Takeoffs plan_notes mirror)
  * Supabase (SSOT) behind an IndexedDB OUTBOX so a survey never depends on signal. Every write goes to the local
  * cache + outbox first, then flushes in order when online. Ink writes are compare-and-swap on survey_pages.version
  * (takeoffs_floors law) with a stroke-level MERGE on conflict (strokes are append-only records keyed by id, erases
@@ -200,9 +200,11 @@ window.SurveyStore = (function () {
       }
       var ink = o.ink, base = g.data.version;
       if (g.data.version !== o.base) ink = mergeInk(g.data.ink, o.ink, o.erased);
+      known[o.id] = Math.max(known[o.id] || 0, base + 1);   // v0.11.1 OPTIMISTIC: the realtime echo of this very update races the response — note the version first so the echo is ignored (it used to repaint the whole page mid-stroke)
       var u = await supa.from('survey_pages').update({ ink: ink, version: base + 1 }).eq('id', o.id).eq('version', base).select('id,version');
-      if (u.error) return isNet(u.error) ? 'retry' : true;
-      if (u.data && u.data.length) { known[o.id] = base + 1; await upsertCache('pages:' + o.sid, { id: o.id, ink: ink, version: base + 1 }); return true; }
+      if (u.error) { if (known[o.id] === base + 1) known[o.id] = base; return isNet(u.error) ? 'retry' : true; }
+      if (u.data && u.data.length) { await upsertCache('pages:' + o.sid, { id: o.id, ink: ink, version: base + 1 }); return true; }
+      if (known[o.id] === base + 1) known[o.id] = base;   // CAS lost — someone else wrote; loop merges on their version
     }
     return true;
   }

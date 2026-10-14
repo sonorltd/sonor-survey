@@ -76,7 +76,8 @@
   // v0.9.1 — a page row changed in the cloud (another device, or our own echo)
   async function onRemotePage(row, ev) {
     if (!row || !S.session || row.session_id !== S.session.id) return;
-    var ST = window.SurveyStore; if ((row.version || 0) <= ST.knownVersion(row.id) && ev !== 'INSERT') return;   // our own write, or older
+    var ST = window.SurveyStore, own = S.pages.find(function (x) { return x.id === row.id; });
+    if ((row.version || 0) <= ST.knownVersion(row.id) && ev !== 'INSERT') { if (own && (row.version || 0) > (own.version || 0)) own.version = row.version; return; }   // our own write echoed back (or older): take the version for the next CAS base, never repaint
     ST.noteVersion(row.id, row.version);
     var p = S.pages.find(function (x) { return x.id === row.id; });
     if (row.metadata && row.metadata.hidden) { if (p) { S.pages = S.pages.filter(function (x) { return x !== p; }); renderStrip(); if (S.page === p) { S.page = null; if (S.pages.length) openPage(S.pages[0].id); else showEmpty(); } } return; }
@@ -429,7 +430,18 @@
     S.page.ink = { v: 1, space: pg.space, strokes: pg.strokes, objects: (pg.objects || []).map(function (o) { return o.kind === 'text' ? { id: o.id, kind: 'text', text: o.text, size: o.size, c: o.c, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t } : { id: o.id, kind: o.kind, src: o.src, path: o.path, x: o.x, y: o.y, w: o.w, h: o.h, t: o.t }; }), marks: pg.marks || [] };
     var er = S.erased; S.erased = [];
     window.SurveyStore.saveInk(S.pid, S.session.id, S.page, er);
-    var el = thumbEl(S.page.id); if (el) thumbFor(S.page, el);
+    queueThumb(S.page);
+  }
+  // v0.11.1 SMOOTH PEN — the thumbnail used to be rendered right inside the autosave (1.2 s after the last stroke): a full page
+  // render + toDataURL on the main thread, landing exactly when the next line was being written. Now it waits for the pen to
+  // lift, then for an idle slot, and never more than one render in flight.
+  function queueThumb(p) {
+    clearTimeout(S.thumbT);
+    S.thumbT = setTimeout(function tick() {
+      if (ink.isDrawing && ink.isDrawing()) { S.thumbT = setTimeout(tick, 400); return; }
+      var run = function () { var el = thumbEl(p.id); if (el) thumbFor(p, el); };
+      if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 4000 }); else setTimeout(run, 250);
+    }, 600);
   }
   window.addEventListener('pagehide', flushSave); document.addEventListener('visibilitychange', function () { if (document.hidden) flushSave(); });
 
