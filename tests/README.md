@@ -31,3 +31,4 @@ All tests use the Bungalow Trial test project (`ce20bee2-…`, `metadata.is_test
 | strokes.mjs | v0.11.1 SMOOTH PEN: 12 lines of 120 points written back-to-back on the TEST project, PerformanceObserver longtask = [] through autosave + realtime echo; pan preview = CSS transform while the finger moves, cleared on lift |
 
 **Rule (2026-10-14):** write-tests run on the Bungalow Trial test project (`ce20bee2…`) only — never a live job's session. A survey may be in progress on the iPad at that moment (Woodbrook was, 13:17 — the test strokes were on the GF plan for 90 s before cleanup; Bryn's 12 marks were untouched).
+| taps.mjs | v0.11.2 (test project): Devices tool — clean tap places, drag / long-press never does, tap on a mark selects, second tap < 450 ms removes (undoable), slow re-tap keeps; stabiliser strong cuts a jittered path 1572 → 667 page units; 4 canvas layers (pred) |

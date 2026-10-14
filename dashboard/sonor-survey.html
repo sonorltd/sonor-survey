@@ -304,7 +304,7 @@ body.sv-focus .sv-focus-chip { display: flex; }
         </div></span>
     </div>
     <div class="sv-palette" id="svPalette" hidden>
-      <div class="sv-ctx-inks" id="svCtxInks"><div class="sv-swatches" id="svColours"></div><span class="sv-ink-name" id="svInkName"></span><span class="sv-mark-gap"></span><div class="sv-swatches" id="svWidths"></div></div>
+      <div class="sv-ctx-inks" id="svCtxInks"><div class="sv-swatches" id="svColours"></div><span class="sv-ink-name" id="svInkName"></span><span class="sv-mark-gap"></span><div class="sv-swatches" id="svWidths"></div><span class="sv-mark-gap"></span><div class="sv-swatches" id="svStab" title="Stabiliser — smooths Pencil wobble (1€ filter): off · light · strong"><span class="sv-obj-group">Steady</span></div></div>
       <div class="sv-marks" id="svMarks" hidden></div>
       <div class="sv-marks sv-objects" id="svObjects" hidden></div>
     </div>
@@ -346,7 +346,7 @@ body.sv-focus .sv-focus-chip { display: flex; }
 <div id="svToast" hidden></div>
 
 <script>
-  const APP_VERSION = '0.11.1';
+  const APP_VERSION = '0.11.2';
   window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
   SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
 </script>

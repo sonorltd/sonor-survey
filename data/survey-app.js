@@ -416,6 +416,8 @@
     if (op.type === 'erase') op.ids.forEach(function (id) { S.erased.push(id); });
     if (op.type === 'add') { var i = S.erased.indexOf(op.stroke.id); if (i >= 0) S.erased.splice(i, 1); }
     if (op.type === 'object') { if (op.action === 'remove') S.erased.push(op.object.id); else { var j = S.erased.indexOf(op.object.id); if (j >= 0) S.erased.splice(j, 1); } }
+    if (op.type === 'mark' && op.action === 'select') { refreshMarkUi(); toast('Tap again to remove · Select to move', 1800); return; }   // v0.11.2
+    if (op.type === 'mark' && op.action === 'removed-by-tap') { toast((op.mark.label || 'Mark') + ' removed — ↶ to undo', 2500); return; }
     if (op.type === 'mark') { if (op.action === 'remove') S.erased.push(op.mark.id); else { var k = S.erased.indexOf(op.mark.id); if (k >= 0) S.erased.splice(k, 1); }
       if (op.action === 'add' && op.mark.kind === 'photo' && !op.undo && !op.mark.photo_page_id) { S.pendingPhotoMark = op.mark.id; setTimeout(function () { $('#svPhotoIn').click(); }, 50); }
       if (op.action === 'add' && op.mark.kind === 'pin' && !op.undo && !op.mark.n) { op.mark.n = nextPinNumber(op.mark.pin); setTimeout(function () { openPinSheet(op.mark); }, 30); }
@@ -493,6 +495,13 @@
       b.onclick = function () { ink.setColour(c.c); $$('.sv-swatch').forEach(function (x) { x.classList.toggle('active', x === b); }); $('#svInkName').textContent = c.n; if (/eraser|pan|select/.test(ink.getTool())) setTool('pen'); };
       sw.appendChild(b);
     });
+    // v0.11.2 STABILISER chips (off / light / strong) — remembered per device; the engine runs a 1€ filter on the pen
+    var sb = $('#svStab'), stabCur = 0; try { stabCur = parseInt(localStorage.getItem('sonor_survey_stab') || '1', 10) || 0; } catch (e) { }
+    [['○', 'Off — exactly what the tip does'], ['◐', 'Light — steadies handwriting, no lag you can feel'], ['●', 'Strong — plan outlines and long lines']].forEach(function (d, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-w sv-stab' + (i === stabCur ? ' active' : ''); b.textContent = d[0]; b.title = d[1];
+      b.onclick = function () { $$('.sv-stab').forEach(function (x) { x.classList.toggle('active', x === b); }); ink.setStabiliser(i); try { localStorage.setItem('sonor_survey_stab', String(i)); } catch (e) { } };
+      sb.appendChild(b);
+    }); ink.setStabiliser(stabCur);
     var ws = $('#svWidths'); CFG.widths.forEach(function (w, i) { var b = document.createElement('button'); b.type = 'button'; b.className = 'btn sv-w' + (i === 1 ? ' active' : ''); b.textContent = w.k; b.title = 'Width ' + w.w; b.onclick = function () { ink.setWidth(w.w); $$('.sv-w').forEach(function (x) { x.classList.toggle('active', x === b); }); }; ws.appendChild(b); });
     $('#svInkName').textContent = CFG.inks[0].n;
     setTimeout(function () { setToolBtn('pen'); }, 0);   // v0.7.0 the context strip reflects the initial tool

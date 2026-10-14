@@ -1,4 +1,4 @@
-/* Sonor Survey — INK ENGINE (app-local, v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
+/* Sonor Survey — INK ENGINE (app-local, v0.11.2 — 1€ stabiliser, predicted tail, tap-to-place / double-tap-remove marks; v0.11.1 — incremental live painting, isDrawing(); v0.4.0 — survey marks: tool 'mark' places a palette item; Select moves / deletes marks too)
  * Pointer-events pencil layer on Canvas 2D. Direct-object model (ADAPTER_INVARIANTS): every stroke point and every
  * object rect is stored in PAGE units (note 1414×1000 landscape / 1000×1414 portrait, plan = Takeoffs 1400×900 world
  * frame, photo = image px); the view transform (scale + pan) is applied only at render time. Nothing here touches Supabase.
@@ -27,8 +27,8 @@ window.SurveyInk = (function () {
   // same pixels; the inline copies below are the offline / load-order fallback only (delegate-with-fallback, B-420).
   var SI = window.SonorInk || null;
   function widthAt(st, p) { if (SI) return SI.widthAt(st, p); if (st.tool === 'hl') return st.w * 4; var pr = (p == null || p === 0) ? 0.5 : p; return st.w * (0.45 + 1.1 * pr); }
-  function drawStroke(ctx, st) {
-    if (SI) return SI.drawStroke(ctx, st);
+  function drawStroke(ctx, st, opts) {
+    if (SI) return SI.drawStroke(ctx, st, opts);
     var pts = st.pts; if (!pts || !pts.length) return;
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = st.c;
     if (st.tool === 'hl') { ctx.globalAlpha = 0.32; ctx.globalCompositeOperation = 'multiply'; ctx.lineCap = 'butt'; }
@@ -115,23 +115,37 @@ window.SurveyInk = (function () {
 
   function create(opts) {
     var host = opts.host, onChange = opts.onChange || function () {};
-    var bg = mk('bg'), inkC = mk('ink'), live = mk('live');
+    var bg = mk('bg'), inkC = mk('ink'), live = mk('live'), pred = mk('pred');   // v0.11.2 pred: the predicted-touch tail, cleared every event
     function mk(n) { var c = document.createElement('canvas'); c.className = 'sv-layer sv-layer-' + n; host.appendChild(c); return c; }
-    var bgx = bg.getContext('2d'), inx = inkC.getContext('2d'), lvx = live.getContext('2d');
+    var bgx = bg.getContext('2d'), inx = inkC.getContext('2d'), lvx = live.getContext('2d'), pdx = pred.getContext('2d');
     var page = null, dpr = Math.max(1, window.devicePixelRatio || 1);
     var view = { s: 1, tx: 0, ty: 0 };
     var tool = 'pen', colour = '#141414', width = 3.5, fingerDraw = false;
     var undo = [], redo = [];
     var cur = null, pointers = new Map(), penActiveUntil = 0, pinch = null, panStart = null;
+    // v0.11.2 STABILISER — 1€ filter (Casiez 2012: the stylus-app standard) on page coords: steady when slow, no lag when fast.
+    // levels: 0 off · 1 light (mincutoff 1.6, beta .02) · 2 strong (mincutoff 0.8, beta .01). Per-stroke state in cur.f.
+    var stab = 0, STAB = [null, { mc: 1.6, beta: 0.02 }, { mc: 0.8, beta: 0.01 }], predictOn = true;
+    function euroAlpha(rate, cutoff) { var te = 1 / rate, tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / te); }
+    function stabilise(pt, t) {
+      var cfg = STAB[stab]; if (!cfg || !cur) return pt;
+      var f = cur.f; if (!f) { cur.f = { x: pt[0], y: pt[1], dx: 0, dy: 0, t: t }; return pt; }
+      var dt = Math.max(1, t - f.t) / 1000, rate = 1 / dt;
+      var ad = euroAlpha(rate, 1.0), dx = (pt[0] - f.x) / dt, dy = (pt[1] - f.y) / dt;
+      f.dx = ad * dx + (1 - ad) * f.dx; f.dy = ad * dy + (1 - ad) * f.dy;
+      var cutoff = cfg.mc + cfg.beta * Math.hypot(f.dx, f.dy), a = euroAlpha(rate, cutoff);
+      f.x = a * pt[0] + (1 - a) * f.x; f.y = a * pt[1] + (1 - a) * f.y; f.t = t;
+      return [f.x, f.y];
+    }
     var sel = null, drag = null;      // selected object id; drag = {mode:'move'|'resize', handle, start, orig}
-    var selMark = null, markDef = null, mdrag = null;   // v0.4.0 marks: selected mark id · active palette def · {id,start,orig}
+    var selMark = null, markDef = null, mdrag = null, tap = null, lastTap = null;   // v0.11.2 tap = pending mark-tool tap · lastTap = {id, t} for double-tap remove   // v0.4.0 marks: selected mark id · active palette def · {id,start,orig}
     var labels = null;   // v0.5.1 {photoPageId: 'P3'} — painted beside the pins (SurveyInk.photoTags)
     var W = 0, H = 0;
 
     function resize() {
       var r = host.getBoundingClientRect(); W = Math.max(1, r.width | 0); H = Math.max(1, r.height | 0);
       dpr = Math.max(1, window.devicePixelRatio || 1);
-      [bg, inkC, live].forEach(function (c) { c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'; });
+      [bg, inkC, live, pred].forEach(function (c) { c.width = W * dpr; c.height = H * dpr; c.style.width = W + 'px'; c.style.height = H + 'px'; });
       render();
     }
     var ro = new ResizeObserver(function () { resize(); }); ro.observe(host);
@@ -179,9 +193,9 @@ window.SurveyInk = (function () {
     var previewing = false;
     function previewView(g) {
       var f = view.s / (g.s || view.s), tx = view.tx - g.tx * f, ty = view.ty - g.ty * f;   // a pan has no scale; a pinch does
-      [bg, inkC, live].forEach(function (c) { c.style.transformOrigin = '0 0'; c.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + f + ')'; }); previewing = true;
+      [bg, inkC, live, pred].forEach(function (c) { c.style.transformOrigin = '0 0'; c.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + f + ')'; }); previewing = true;
     }
-    function settleView() { if (!previewing) return; previewing = false; [bg, inkC, live].forEach(function (c) { c.style.transform = ''; }); render(); }
+    function settleView() { if (!previewing) return; previewing = false; [bg, inkC, live, pred].forEach(function (c) { c.style.transform = ''; }); render(); }
 
     // ---------- objects ----------
     function selObj() { return sel && page ? (page.objects || []).find(function (o) { return o.id === sel; }) : null; }
@@ -246,16 +260,26 @@ window.SurveyInk = (function () {
       for (var i = 0; i < evs.length; i++) {
         var pt = toPage(evs[i].clientX, evs[i].clientY);
         if (cur.eraser) { eraseAt(pt); continue; }
+        pt = stabilise(pt, evs[i].timeStamp || Date.now());
         var last = cur.pts[cur.pts.length - 1];
         if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) * view.s < 0.9) continue;
         cur.pts.push([r2(pt[0]), r2(pt[1]), r2(evs[i].pressure || 0.5)]);
       }
-      if (!cur.eraser) liveAppend();
+      if (!cur.eraser) { liveAppend(); predictTail(e); }
+    }
+    // v0.11.2 PREDICTED TAIL — the OS's predicted touches (Apple Pencil: ~1 frame ahead) painted faintly past the real tip on
+    // their own layer, replaced by real ink next event: the line keeps up with the tip. Cleared on every event / stroke end.
+    function predictTail(e) {
+      clear(pdx); if (!predictOn || !cur || cur.tool === 'hl' || !e.getPredictedEvents) return;
+      var pe = e.getPredictedEvents(); if (!pe || !pe.length) return;
+      var last = cur.pts[cur.pts.length - 1], tail = { tool: 'pen', c: cur.c, w: cur.w, pts: [last] };
+      for (var i = 0; i < Math.min(pe.length, 4); i++) { var pp = toPage(pe[i].clientX, pe[i].clientY); tail.pts.push([pp[0], pp[1], last[2]]); }
+      applyView(pdx); drawStroke(pdx, tail, { alpha: 0.45 });
     }
     function end() {
       if (!cur) return;
       if (cur.eraser) { if (cur.hit && cur.hit.length) { undo.push({ type: 'erase', strokes: cur.removed }); redo.length = 0; onChange({ type: 'erase', ids: cur.hit.slice() }); } cur = null; return; }
-      var st = cur; cur = null; clear(lvx);
+      var st = cur; cur = null; clear(lvx); clear(pdx); delete st.f; delete st.drawn;
       page.strokes.push(st); applyView(inx); drawStroke(inx, st);
       undo.push({ type: 'add', stroke: st }); redo.length = 0; onChange({ type: 'add', stroke: st });
     }
@@ -288,11 +312,11 @@ window.SurveyInk = (function () {
           panStart = null; return;
         }
       }
-      if (tool === 'mark') {   // v0.4.1: a tap ALWAYS places (grabbing a nearby mark made it "stuck" on the iPad); Select moves marks
-        var mp = toPage(e.clientX, e.clientY);
-        if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }
-        if (mp[0] < 0 || mp[1] < 0 || mp[0] > page.space.w || mp[1] > page.space.h) return;
-        addMark(markDef, mp); e.preventDefault(); return;
+      if (tool === 'mark') {   // v0.11.2: a mark is placed on pointer UP by a clean tap (no drag, < 600 ms) — a scrolling finger no longer drops
+        var mp = toPage(e.clientX, e.clientY);                    // devices (Bryn: "too easy to accidentally insert"); tap an existing mark = select it,
+        if (!markDef) { panStart = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; return; }   // tap it AGAIN within 450 ms = remove (undoable)
+        tap = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now(), pt: mp, hit: markHit(mp), tx: view.tx, ty: view.ty, moved: false };
+        e.preventDefault(); return;
       }
       if (tool === 'text') {   // v0.6.0 — the app owns the editor: tap on a text object edits it, tap on paper starts a new one
         var tp = toPage(e.clientX, e.clientY), to = objectAt(tp);
@@ -333,6 +357,7 @@ window.SurveyInk = (function () {
           if (o.kind === 'text' && g.size) o.size = Math.max(10, r2(g.size * o.w / g.w)); }   // v0.6.0 text scales with its box
         renderBg(); renderLive(); return;
       }
+      if (tap && tap.id === e.pointerId) { if (!tap.moved && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 8) { tap.moved = true; panStart = { x: tap.x, y: tap.y, tx: tap.tx, ty: tap.ty }; } }
       if (panStart) { view.tx = panStart.tx + (e.clientX - panStart.x); view.ty = panStart.ty + (e.clientY - panStart.y); clampView(); previewView(panStart); return; }
       if (cur && cur.penId === e.pointerId) { move(e); e.preventDefault(); return; }
       if (tool === 'select' && e.pointerType === 'mouse' && !e.buttons) hoverCursor(toPage(e.clientX, e.clientY));
@@ -344,7 +369,7 @@ window.SurveyInk = (function () {
       else c = 'grab';
       if (host.style.cursor !== c) host.style.cursor = c;
     }
-    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
+    function resetGestures() { cur = null; drag = null; mdrag = null; panStart = null; pinch = null; tap = null; pointers.clear(); clear(lvx); if (previewing) settleView(); else renderLive(); }
     function onUp(e) {
       if (e.pointerType === 'touch') { pointers.delete(e.pointerId); if (pointers.size < 2 && pinch) { pinch = null; settleView(); } }
       if (mdrag && mdrag.id === e.pointerId) {   // v0.4.3: one block — the old early `return` never cleared mdrag, so the first mark grabbed stayed glued to the pointer and nothing else could be selected
@@ -352,6 +377,15 @@ window.SurveyInk = (function () {
         if (mk2) { var mpt = toPage(e.clientX, e.clientY); mk2.x = r2(Math.max(0, Math.min(page.space.w, mg.x + mpt[0] - ms[0]))); mk2.y = r2(Math.max(0, Math.min(page.space.h, mg.y + mpt[1] - ms[1]))); }
         if (mk2 && (mk2.x !== mg.x || mk2.y !== mg.y)) { undo.push({ type: 'mark-update', id: mk2.id, before: mg, after: { x: mk2.x, y: mk2.y } }); redo.length = 0; onChange({ type: 'mark', action: 'update', mark: mk2 }); }
         renderBg(); renderLive(); return;
+      }
+      if (tap && tap.id === e.pointerId) {
+        var tp0 = tap; tap = null;
+        if (!tp0.moved && Date.now() - tp0.t < 600) {
+          if (tp0.hit) {
+            if (lastTap && lastTap.id === tp0.hit.id && Date.now() - lastTap.t < 450) { lastTap = null; removeMark(tp0.hit.id); onChange({ type: 'mark', action: 'removed-by-tap', mark: tp0.hit }); }
+            else { lastTap = { id: tp0.hit.id, t: Date.now() }; selMark = tp0.hit.id; sel = null; renderLive(); onChange({ type: 'mark', action: 'select', mark: tp0.hit }); }
+          } else if (tp0.pt[0] >= 0 && tp0.pt[1] >= 0 && tp0.pt[0] <= page.space.w && tp0.pt[1] <= page.space.h) { lastTap = null; addMark(markDef, tp0.pt); }
+        }
       }
       if (drag && drag.id === e.pointerId) { var o = selObj(), g = drag.orig; drag = null; if (o && (o.x !== g.x || o.y !== g.y || o.w !== g.w || o.h !== g.h)) { undo.push({ type: 'obj-update', id: o.id, before: g, after: { x: o.x, y: o.y, w: o.w, h: o.h, size: o.size } }); redo.length = 0; onChange({ type: 'object', action: 'update', object: o }); } }
       if (panStart) { panStart = null; settleView(); }
@@ -399,7 +433,7 @@ window.SurveyInk = (function () {
 
     return {
       setPage: function (p) { page = p; page.strokes = page.strokes || []; page.objects = page.objects || []; page.marks = page.marks || []; page.images = page.images || {}; undo.length = 0; selMark = null; mdrag = null; redo.length = 0; cur = null; sel = null; drag = null; resize(); fit(); },
-      getPage: function () { return page; }, isDrawing: function () { return !!cur; },   // v0.11.1 — the app defers thumbnails while the pen is down
+      getPage: function () { return page; }, isDrawing: function () { return !!cur; }, setStabiliser: function (n) { stab = Math.max(0, Math.min(2, n | 0)); }, getStabiliser: function () { return stab; }, setPredict: function (on) { predictOn = !!on; },   // v0.11.1 — the app defers thumbnails while the pen is down
       replaceContent: function (c) { if (!page) return; page.strokes = c.strokes || []; page.objects = c.objects || []; page.marks = c.marks || []; undo.length = 0; redo.length = 0; sel = null; selMark = null; drag = null; mdrag = null; render(); },   // v0.9.1 realtime: swap the content, keep the view
       setTool: function (t) { tool = t; host.dataset.tool = t; drag = null; mdrag = null; panStart = null; host.style.cursor = ''; if (t !== 'select') sel = null; if (t !== 'select' && t !== 'mark') selMark = null; renderLive(); }, getTool: function () { return tool; },
       pageToScreen: function (x, y) { return [x * view.s + view.tx, y * view.s + view.ty]; }, getScale: function () { return view.s; },
