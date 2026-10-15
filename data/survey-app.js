@@ -21,7 +21,7 @@
     buildToolbar(); wireUi(); wireDrop();
     window.SurveyStore.onStatus(renderSync);
     if (window.SonorIcons) window.SonorIcons.auto(document.body);
-    try { navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); } catch (e) { }
+    try { if (!window.SurveyDemo) navigator.serviceWorker && navigator.serviceWorker.register('./sw.js'); } catch (e) { }   /* v0.11.6 the sandboxed demo (demo/) runs without the SW */
     var cur = null; try { cur = localStorage.getItem('sonor_active_project_id::survey'); } catch (e) { }
     if (cur && !S.pid) setTimeout(function () { if (!S.pid) onProject(cur, null); }, 800);
   }

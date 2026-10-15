@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>DEMO · Survey — Sonor</title>
+<link rel="icon" href="../data/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sonor Survey">
+<meta name="theme-color" content="#141416">
+<!-- sonor-platform §1/§2: theme FIRST, then brand.css, then the served kit (mirror fallback), then shared chrome, then the app alias layer -->
+<script src="../data/sonor-theme.js"></script>
+<link rel="stylesheet" href="../data/brand.css">
+<script type="module" src="../data/kit/kit.js"></script>
+<link rel="stylesheet" href="../data/sonor-header.css">
+<link rel="stylesheet" href="../data/sonor-components.css">
+<link rel="stylesheet" href="../data/app-vars.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="demo-data/survey-demo.js"></script>   <!-- DEMO: in-memory stand-in for the database — no key, no cloud -->
+<script src="../data/sonor-brand.js"></script>
+<script src="../data/sonor-app.js"></script>
+<script src="../data/sonor-icons.js"></script>
+<script src="../data/sonor-header.js"></script>
+<script src="../data/sonor-project-list.js"></script>
+<script src="../data/sonor-project-bar.js"></script>
+<script src="../data/sonor-ink.js"></script>
+<script src="../data/sonor-survey-link.js"></script>   <!-- shared survey seam (root master, synced) — other apps pull survey photos / pins / devices through it -->   <!-- shared ink renderer (root master, synced) — Takeoffs' survey-ink layer paints with the same code -->
+<script src="../data/survey-config.js"></script>
+<script src="../data/survey-ink.js"></script>
+<script src="../data/survey-store.js"></script>
+<script src="../data/survey-plan.js"></script>
+<script src="../data/survey-checklist.js"></script>
+<!-- survey / meeting report PDF — shared luxury chrome (root master, synced) on pdf-lib -->
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+<script src="../data/sonor-pdf-luxury.js"></script>
+<script src="../data/survey-pdf.js"></script>
+<style>
+/* ═══ SONOR SURVEY — app-local LAYOUT only. No :root palette, no raw hex in chrome (S-4.1). ═══ */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; background: var(--body); color: var(--text-primary); display: flex; flex-direction: column; position: fixed; inset: 0; height: auto; overflow: hidden; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); overscroll-behavior: none; }   /* v0.9.0 iPad: fixed shell + visualViewport height (survey-field) — iOS Safari's 100dvh/toolbars never push the tool bar off screen */
+html { overflow: hidden; height: 100%; }
+.sv-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-wrap: nowrap; overflow-x: auto; min-height: 44px; }
+.sv-bar::-webkit-scrollbar { display: none; }
+.sv-bar select, .sv-bar input { font: inherit; font-size: 13px; color: var(--text-primary); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-height: 34px; color-scheme: dark; }
+.sv-bar .btn { min-height: 34px; padding: 5px 10px; font-size: 13px; white-space: nowrap; }
+.sv-bar .btn.active, .sv-bar .sv-w.active { background: color-mix(in srgb, var(--accent) 24%, var(--card)); border-color: var(--accent); }
+.sv-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; flex: none; }
+.sv-grow { flex: 1 1 auto; }
+#svSession { max-width: 320px; }
+.sv-swatches { display: flex; gap: 5px; align-items: center; }
+.sv-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); background: var(--c); cursor: pointer; padding: 0; flex: none; }
+.sv-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+.sv-body { flex: 1 1 auto; display: flex; min-height: 0; }
+.sv-pages { width: 150px; flex: none; overflow-y: auto; padding: 8px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; background: var(--bg-1, var(--body)); }
+.sv-thumb { border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 5px; cursor: pointer; }
+.sv-thumb.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sv-thumb-img { background: #fff; border-radius: 3px; overflow: hidden; display: flex; justify-content: center; }
+.sv-thumb-img img { display: block; width: 100%; height: auto; }
+.sv-thumb-lbl { font-size: 10.5px; margin-top: 4px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sv-thumb-kind { font-family: 'DM Mono', monospace; text-transform: uppercase; font-size: 9px; letter-spacing: .06em; }
+.sv-thumb-add { justify-content: center; }
+.sv-stage { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.sv-meta { display: flex; gap: 8px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.sv-meta input, .sv-meta select { font: inherit; font-size: 12.5px; color: var(--text-primary); background: var(--card); border: 1px solid var(--border); border-radius: 5px; padding: 4px 7px; color-scheme: dark; }
+#svTitle { flex: 1 1 200px; min-width: 120px; } #svRoom { width: 150px; } #svPhotoFrom { width: 210px; } #svPhotoCat[hidden], #svPhotoFrom[hidden] { display: none; }
+.sv-thumb-cat { position: absolute; right: 4px; top: 4px; background: #d08a1a; color: #1a1814; font: 700 9px/1 'DM Sans', system-ui, sans-serif; padding: 3px 5px; border-radius: 4px; pointer-events: none; }
+.sv-recv { display: flex; flex-direction: column; gap: 8px; } .sv-recv label { font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); display: flex; flex-direction: column; gap: 4px; } .sv-recv input, .sv-recv select, .sv-recv textarea { font: inherit; font-size: 14px; min-height: 40px; color: var(--text-primary); background: var(--body); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color-scheme: dark; }
+.sv-thumb-img { position: relative; } .sv-thumb-tag { position: absolute; left: 4px; top: 4px; background: #1C1C1E; color: #fff; font: 700 9.5px/1 'DM Sans', system-ui, sans-serif; padding: 3px 5px; border-radius: 4px; border: 1px solid rgba(255,255,255,.75); pointer-events: none; }
+.sv-canvas { flex: 1 1 auto; position: relative; overflow: hidden; background: var(--bg-0, var(--body)); background-image: radial-gradient(color-mix(in srgb, var(--text-muted) 22%, transparent) 1px, transparent 1px); background-size: 22px 22px; touch-action: none; cursor: crosshair; }
+.sv-canvas[data-tool="pan"] { cursor: grab; } .sv-canvas[data-tool="eraser"] { cursor: cell; }
+.sv-layer { position: absolute; inset: 0; }
+.sv-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); text-align: center; padding: 24px; }
+.sv-empty[hidden], .sv-canvas[hidden], .btn[hidden], button[hidden] { display: none !important; }
+.sv-empty h2 { margin: 0; color: var(--text-primary); font-weight: 600; }
+#svAddMenu { position: fixed; z-index: 200; min-width: 200px; padding: 6px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0,0,0,.4); display: flex; flex-direction: column; gap: 3px; }
+#svAddMenu[hidden] { display: none; }
+#svAddMenu button { display: flex; align-items: center; gap: 8px; text-align: left; padding: 9px 10px; min-height: 40px; }
+.sv-modal { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.sv-modal[hidden] { display: none; }
+.sv-modal-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; width: min(560px, 100%); max-height: 80vh; overflow: auto; }
+.sv-modal-h { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.sv-modal-b { padding: 14px 16px; }
+.sv-floorlist { display: flex; flex-direction: column; gap: 8px; }
+.sv-floor-btn { justify-content: flex-start; text-align: left; min-height: 44px; }
+.sv-hist { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+#svToast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 400; background: var(--card); color: var(--text-primary); border: 1px solid var(--border-strong, var(--border)); border-radius: 8px; padding: 9px 14px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+#svToast[hidden] { display: none; }
+.sv-sync { white-space: nowrap; }
+.sv-palette { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,.35); overflow-x: auto; }
+.sv-palette[hidden] { display: none; }
+.sv-marks { display: flex; gap: 6px; flex-wrap: nowrap; }
+.sv-pin-item { display: flex; align-items: center; gap: 10px; justify-content: flex-start; text-align: left; padding: 6px 8px; min-height: 40px; }
+.sv-pin-item small { display: block; font-size: 10.5px; color: var(--text-secondary, #9a9a9a); font-weight: 400; }
+.sv-pin-dot { border-radius: 4px; transform: rotate(45deg); } .sv-pin-dot { transform: none; border-radius: 5px; }
+.sv-pin-sheet .sv-pin-text, .sv-pin-sheet .sv-pin-to { width: 100%; box-sizing: border-box; font: inherit; font-size: 14px; color: var(--text-primary); background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 6px 0; color-scheme: dark; }
+.sv-pin-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.sv-text-ed { position: absolute; z-index: 20; min-height: 1.4em; padding: 2px 4px; margin: 0; background: rgba(255,255,255,.92); border: 1.5px dashed #3A8AA8; border-radius: 4px; outline: none; resize: both; font-family: 'DM Sans', system-ui, sans-serif; line-height: 1.25; color: #141414; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+.sv-mark-chip { min-height: 32px; padding: 3px 9px 3px 5px; font-size: 12px; white-space: nowrap; }
+.sv-mark-gap { width: 1px; align-self: stretch; background: var(--border); margin: 0 3px; flex: none; }
+.sv-mark-chip.active { border-color: var(--mk); box-shadow: 0 0 0 1px var(--mk); }
+.sv-obj-dot { border-radius: 5px; font-size: 8.5px; }
+.sv-keep .sv-keep-dot { background: transparent; font-size: 13px; } .sv-keep.active { border-color: #c0392b; box-shadow: 0 0 0 1px #c0392b; color: #ff7b72; background: color-mix(in srgb, #c0392b 18%, transparent); }   /* lock law: red when locked */
+.sv-chip-ghost { position: fixed; z-index: 60; pointer-events: none; opacity: .85; transform: scale(1.15); transform-origin: left top; box-shadow: 0 10px 28px rgba(0,0,0,.45); }   /* v0.11.3 drag-to-place */
+.sv-chip-ghost.sv-chip-ghost-ok { outline: 2px solid var(--accent); }
+.sv-mark-chip { touch-action: pan-x; }   /* sideways = the strip scrolls (browser); UP out of the strip = drag-to-place (chipDrag) */   /* v0.11.0 site objects: graphite square, never a service colour */
+.sv-obj-group { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary, #9a9a9a); align-self: center; margin: 0 2px 0 4px; white-space: nowrap; }
+.sv-mark-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; border-radius: 50%; background: var(--mk); color: #fff; font-size: 9px; font-weight: 700; margin-right: 6px; padding: 0 4px; }
+.sv-stage.sv-drop .sv-canvas, .sv-stage.sv-drop #svCheck { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.sv-canvas[data-tool="select"] { cursor: default; }
+/* checklist sheet — paper (§11) */
+#svCheck { flex: 1 1 auto; overflow: auto; padding: 18px; background: var(--bg-0, var(--body)); }
+#svCheck[hidden] { display: none; }
+.sv-sheet { max-width: 860px; margin: 0 auto; padding: 28px 32px 36px; border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.sv-sheet-h { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #1a1814; padding-bottom: 10px; margin-bottom: 8px; }
+.sv-sheet-title { font-size: 20px; font-weight: 700; }
+.sv-sheet-prog { font-family: 'DM Mono', monospace; font-size: 12px; opacity: .6; }
+.sv-ci { display: grid; grid-template-columns: 34px 1fr 28px; gap: 8px; align-items: start; padding: 9px 0; border-bottom: 1px solid #e3e6ec; }
+.sv-ci.done .sv-ci-text { opacity: .55; text-decoration: line-through; }
+.sv-ci-tick { width: 30px; height: 30px; border-radius: 6px; border: 1.5px solid #8a8f99; background: #fff; color: #fff; font-size: 18px; line-height: 26px; padding: 0; cursor: pointer; }
+.sv-ci-tick[aria-pressed="true"] { background: #78ba57; border-color: #78ba57; }
+.sv-ci-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.sv-ci-text { font-size: 15px; line-height: 1.35; padding: 4px 2px; outline: none; border-radius: 3px; }
+.sv-ci-text:focus { background: #f2f5fa; }
+.sv-ci-text:empty::before { content: 'New item…'; opacity: .4; }
+.sv-ci-val, .sv-ci-note { font: inherit; font-size: 14px; border: 1px solid #cdd3dd; border-radius: 5px; padding: 7px 9px; background: #fbfcfe; color: #1a1814; width: 100%; resize: none; }
+.sv-ci-note { font-size: 12.5px; border-style: dashed; }
+.sv-ci-yn { display: flex; gap: 6px; } .sv-ci-yn .btn { color: #1a1814; background: #fff; border-color: #cdd3dd; } .sv-ci-yn .btn.active { background: #1a1814; color: #fff; border-color: #1a1814; }
+.sv-ci-del { border: 0; background: transparent; color: #8a8f99; cursor: pointer; font-size: 14px; padding: 6px; }
+.sv-sheet-add { display: flex; gap: 8px; margin-top: 14px; } .sv-sheet-add .btn { color: #1a1814; background: #fff; border-color: #cdd3dd; }
+.sv-svc-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--svc, var(--text-muted)); margin-right: 6px; }
+#svPortrait { justify-content: center; border-top: 1px solid var(--border); margin-top: 4px; }
+/* ═══ v0.7.0 FIELD CHROME ═══ */
+.sv-bar .btn, .sv-bar select { min-height: 40px; }                       /* field: 40 px touch targets */
+.sv-bar-top { background: var(--bg-1, var(--body)); }
+.sv-bar-tools { padding-top: 5px; padding-bottom: 5px; }
+.sv-find { max-width: 260px; } .sv-find .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; display: inline-block; vertical-align: middle; }
+.sv-where { font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34vw; }
+.sv-where b { color: var(--text-primary); font-weight: 600; }
+.sv-where .sep { opacity: .5; margin: 0 5px; }
+.sv-sync { min-width: 150px; justify-content: flex-start; font-size: 12.5px; }
+.sv-sync[data-tone="ok"] { border-color: color-mix(in srgb, #78ba57 55%, var(--border)); } .sv-sync[data-tone="ok"]::before { content: '●'; color: #78ba57; margin-right: 6px; }
+.sv-sync[data-tone="info"]::before { content: '◐'; color: #f5b041; margin-right: 6px; }
+.sv-sync[data-tone="warn"]::before { content: '●'; color: #f5b041; margin-right: 6px; }
+.sv-sync[data-tone="busy"]::before { content: '◌'; margin-right: 6px; animation: svspin 1s linear infinite; display: inline-block; }
+@keyframes svspin { to { transform: rotate(360deg); } }
+.sv-menu-wrap { position: relative; display: inline-block; flex: none; }
+.sv-menu { position: fixed; z-index: 250; min-width: 240px; padding: 6px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 2px; }
+.sv-menu[hidden] { display: none; }
+.sv-menu .btn { justify-content: flex-start; text-align: left; min-height: 42px; padding: 8px 10px; font-size: 13.5px; }
+.sv-menu .btn kbd { margin-left: auto; font: 11px 'DM Mono', monospace; color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.sv-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+.sv-menu-head { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); padding: 6px 10px 2px; }
+.sv-menu-row { display: flex; align-items: center; gap: 10px; padding: 4px 10px; font-size: 13px; } .sv-menu-row select { flex: 1 1 auto; min-height: 36px; font: inherit; color: var(--text-primary); background: var(--body); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; color-scheme: dark; }
+.sv-tool-now { font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); white-space: nowrap; }
+.sv-ctx-inks { display: flex; align-items: center; gap: 10px; }
+.sv-ctx-inks[hidden], .sv-marks[hidden] { display: none; }
+.sv-swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--border); background: var(--c); cursor: pointer; padding: 0; flex: none; color: #fff; font: 700 10px/1 'DM Mono', monospace; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.sv-swatch[data-nn="04"], .sv-swatch[data-nn="09"], .sv-swatch[data-nn="08"] { color: #1a1814; text-shadow: none; }
+.sv-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+.sv-ink-name { font-size: 12.5px; color: var(--text-primary); white-space: nowrap; min-width: 92px; }
+.sv-w { min-width: 38px; min-height: 36px; }
+.sv-pin-item { min-height: 42px; }
+/* finder */
+.sv-finder input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; min-height: 44px; color: var(--text-primary); background: var(--body); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color-scheme: dark; }
+.sv-finder-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; max-height: 52vh; overflow: auto; }
+.sv-finder-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 48px; padding: 8px 10px; text-align: left; }
+.sv-finder-row .ref { font: 12px 'DM Mono', monospace; color: var(--text-muted); } .sv-finder-row .nm { font-weight: 600; font-size: 14px; } .sv-finder-row .ad { font-size: 12px; color: var(--text-secondary, var(--text-muted)); }
+.sv-finder-row.cur { border-color: var(--accent); }
+.sv-finder-opts { display: flex; gap: 14px; align-items: center; margin-top: 8px; font-size: 12.5px; color: var(--text-secondary, var(--text-muted)); } .sv-finder-opts label { display: flex; align-items: center; gap: 6px; }
+.sv-finder-h { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 10px 2px 4px; }
+/* finish + saving sheets */
+.sv-steps { display: flex; flex-direction: column; gap: 10px; }
+.sv-step { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.sv-step h4 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; } .sv-step h4 .n { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; font-size: 12px; background: var(--border); } .sv-step.done h4 .n { background: #78ba57; color: #fff; }
+.sv-step ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.5; } .sv-step .warn { color: #f5b041; }
+.sv-step .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.sv-q { display: flex; flex-direction: column; gap: 6px; } .sv-q-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border); } .sv-q-row .op { font: 12px 'DM Mono', monospace; min-width: 110px; } .sv-q-row .when { color: var(--text-muted); margin-left: auto; font-size: 12px; }
+/* focus mode */
+body.sv-focus #sonor-header, body.sv-focus #projectBarHost, body.sv-focus .sv-bar-top, body.sv-focus .sv-pages, body.sv-focus .sv-meta { display: none !important; }
+body.sv-focus .sv-bar-tools { border-top: 1px solid var(--border); }
+.sv-focus-chip { position: absolute; left: 10px; bottom: 10px; z-index: 6; display: none; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: color-mix(in srgb, var(--card) 92%, transparent); border: 1px solid var(--border); font-size: 12.5px; }
+body.sv-focus .sv-focus-chip { display: flex; }
+.sv-focus-chip .btn { min-height: 32px; }
+/* ═══ v0.9.0 iPAD + iPHONE ═══ */
+.sv-fab { display: none; position: absolute; right: 16px; bottom: 72px; z-index: 7; width: 64px; height: 64px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 26px; align-items: center; justify-content: center; box-shadow: 0 10px 28px rgba(0,0,0,.45); cursor: pointer; }
+.sv-fab:active { transform: scale(.96); }
+@media (max-width: 1400px), (pointer: coarse) {   /* tablet (v0.10.4: any touch device, incl. 12.9in iPad in Chrome at 1366 px): the shared project bar collapses to its picker row — ref / floor / room live in the where-strip and the 🔎 finder */
+  #projectBarHost .sonor-project-bar .meta, #projectBarHost .sonor-project-bar .note { display: none !important; }
+  #projectBarHost .sonor-project-bar { flex-wrap: nowrap !important; overflow-x: auto; }
+  .sv-pages { width: 118px; }
+  .sv-where { max-width: 26vw; }
+}
+@media (max-width: 640px) {   /* phone: geared to taking photos */
+  #projectBarHost { display: none; }                               /* 🔎 finder is the picker */
+  .sv-bar-top .sv-where, #svFocus, #svFinish .lbl, .sv-tool-now { display: none !important; }
+  .sv-bar .sv-sync { min-width: 0; font-size: 0; padding: 0 10px; } .sv-bar .sv-sync::before { font-size: 14px; margin: 0 !important; }   /* just the dot; tap for the sheet */
+  #svRedo, .sv-bar-tools .sv-sep { display: none; } .sv-bar-tools { gap: 5px; padding: 5px 6px; }
+  .sv-find { max-width: 40vw; } #svSession { max-width: 34vw; }
+  .sv-body { flex-direction: column; }
+  .sv-pages { width: auto; order: 2; flex-direction: row; height: 92px; border-right: 0; border-top: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; padding: 6px 8px; gap: 6px; }
+  .sv-thumb { width: 96px; flex: none; } .sv-thumb-add { width: 72px; flex: none; }
+  .sv-stage { order: 1; }
+  .sv-meta { flex-wrap: wrap; gap: 6px; } #svFloor { display: none; } #svTitle { flex: 1 1 100%; } #svRoom { flex: 1 1 auto; width: auto; }
+  .sv-bar-tools [data-tool="select"] .lbl, .sv-bar-tools [data-tool="mark"] .lbl, .sv-bar-tools [data-tool="object"] .lbl, .sv-bar-tools [data-tool="pen"] .lbl, #svAdd .lbl, #svMoreBtn .lbl { display: none; }
+  .sv-palette { left: 6px; right: 6px; bottom: 6px; padding: 5px 8px; } .sv-ink-name { display: none; }
+  .sv-fab { display: flex; }
+  #svFinish { font-size: 0; padding: 0 12px; } #svFinish::before { content: '✓'; font-size: 16px; }
+  .sv-bar-top { gap: 6px; padding: 6px 8px; }
+  .sv-empty p { font-size: 14px; }
+}
+@media (max-width: 760px) { #svSession { max-width: 170px; } .sv-bar .btn span.lbl { display: none; } }
+</style>
+</head>
+<body>
+<div id="sonor-header"></div>
+<script>SonorHeader.init({ appName: 'Survey', repo: 'sonor-survey', faviconHref: '../data/favicon.svg' });</script>
+<div id="projectBarHost"></div>
+
+<!-- v0.7.0 FIELD CHROME — one survey bar (project · survey · where · finish · save state) + one tool bar (the five that matter, the rest in More ▾).
+     Colours / widths / device chips live in the CONTEXT STRIP over the page and appear only for the tool that uses them. -->
+<div class="sv-bar sv-bar-top" data-bar>
+  <button class="btn sv-find" id="svFind" type="button" title="Find a project — by number, name or address (⌘K)">🔎 <span class="lbl" id="svFindLbl">Project</span></button>
+  <select id="svSession" aria-label="Survey session"></select>
+  <span class="sv-menu-wrap"><button class="btn" id="svSurveyBtn" type="button" title="Survey actions">☰ <span class="lbl">Survey</span> ▾</button>
+    <div class="sv-menu" id="svSurveyMenu" hidden>
+      <button class="btn" id="svNew" type="button">＋ New survey</button>
+      <label class="sv-menu-row">Kind <select id="svKind" aria-label="Kind"></select></label>
+      <button class="btn" id="svEngineer" type="button">👤 Engineer…</button>
+      <span class="sv-menu-sep"></span>
+      <button class="btn" id="svClose" type="button">✓ Complete survey</button>
+      <button class="btn" id="svPublish" type="button">⬆ Publish to project</button>
+      <button class="btn" id="svReport" type="button">📄 Report PDF</button>
+      <span class="sv-menu-sep"></span>
+      <div class="sv-menu-head">Open this project in</div>
+      <a class="btn" data-open="garden-lighting" href="#" target="_blank" rel="noopener">🌿 Garden Lighting ↗</a>
+      <a class="btn" data-open="takeoffs" href="#" target="_blank" rel="noopener">📐 Takeoffs ↗</a>
+      <a class="btn" data-open="pm" data-open-path="brief.html" href="#" target="_blank" rel="noopener">📋 Project brief ↗</a>
+    </div></span>
+  <span class="sv-grow"></span>
+  <span class="sv-where" id="svWhere" title="Where you are recording"></span>
+  <button class="btn" id="svFocus" type="button" title="Focus — hide everything but the page and tools (⌥F)">⛶ <span class="lbl">Focus</span></button>
+  <button class="btn btn-primary" id="svFinish" type="button" title="Review → Complete → Publish">Finish ▾</button>
+  <button class="btn sv-sync" id="svSync" type="button" data-tone="dim" title="Saving state — tap to inspect pending uploads">…</button>
+</div>
+
+<div class="sv-bar sv-bar-tools" data-bar>
+  <button class="btn" id="svAdd" type="button" title="Add a page">＋ <span class="lbl">Page</span></button>
+  <span class="sv-sep"></span>
+  <button class="btn active" type="button" data-tool="pen" title="Pen (P)">✏️ <span class="lbl">Pen</span></button>
+  <button class="btn" type="button" data-tool="mark" title="Devices — tap a type, tap the plan (M)">📍 <span class="lbl">Devices</span></button>
+  <button class="btn" type="button" data-tool="object" title="Objects — what is already there: radiators, steels, loft hatch, existing kit (O)">🧱 <span class="lbl">Objects</span></button>
+  <button class="btn" type="button" data-tool="photopin" title="Photo — tap where you're standing, then take the photo (C)">📷 <span class="lbl">Photo</span></button>
+  <button class="btn" type="button" data-tool="select" title="Select / move / resize (V)">⬚ <span class="lbl">Select</span></button>
+  <span class="sv-sep"></span>
+  <button class="btn" id="svUndo" type="button" title="Undo (⌘Z)">↶</button>
+  <button class="btn" id="svRedo" type="button" title="Redo (⇧⌘Z)">↷</button>
+  <span class="sv-sep"></span>
+  <span class="sv-ctx-actions">
+  <button class="btn" id="svDelObj" type="button" hidden title="Remove the selected image / mark (⌫)">🗑</button>
+  <button class="btn" id="svMarkPhoto" type="button" hidden title="Take a photo pinned to the selected mark">📷 <span class="lbl">Photo here</span></button>
+  <button class="btn" id="svMarkOpen" type="button" hidden title="Open the photo pinned to this mark">🖼 <span class="lbl">Pinned photo</span></button>
+  <button class="btn" id="svPinEdit" type="button" hidden title="Edit this pin's text">✎ <span class="lbl">Edit pin</span></button>
+  <button class="btn" id="svTextEdit" type="button" hidden title="Edit this text">✎ <span class="lbl">Edit text</span></button>
+  </span>
+  <span class="sv-tool-now" id="svToolNow"></span>
+  <span class="sv-grow"></span>
+  <span class="sv-menu-wrap"><button class="btn" id="svMoreBtn" type="button" title="More tools">⋯ <span class="lbl">More</span> ▾</button>
+    <div class="sv-menu sv-menu-more" id="svMoreMenu" hidden>
+      <button class="btn" type="button" data-tool="hl">🖍 Highlighter <kbd>H</kbd></button>
+      <button class="btn" type="button" data-tool="eraser">⌫ Eraser <kbd>E</kbd></button>
+      <button class="btn" type="button" data-tool="text">T Text <kbd>T</kbd></button>
+      <button class="btn" type="button" data-tool="pan">✋ Pan <kbd>Space</kbd></button>
+      <span class="sv-menu-sep"></span>
+      <div class="sv-menu-head">📌 Pins — pull through to Takeoffs</div>
+      <div id="svPinsMenu"></div>
+      <span class="sv-menu-sep"></span>
+      <button class="btn" id="svFit" type="button">⤢ Fit page <kbd>F</kbd></button>
+      <button class="btn" id="svFinger" type="button" aria-pressed="false">☝ Finger draws too</button>
+      <button class="btn" type="button" id="svPortrait">▭ Landscape pages</button>
+    </div></span>
+</div>
+
+<div class="sv-body">
+  <aside class="sv-pages" id="svPages"></aside>
+  <div class="sv-stage">
+    <div class="sv-meta">
+      <input id="svTitle" placeholder="Page title (e.g. Cinema room — rear wall)" aria-label="Page title">
+      <select id="svFloor" aria-label="Floor"><option value="">Floor</option></select>
+      <input id="svRoom" placeholder="Room" aria-label="Room">
+      <button class="btn btn-sm" id="svPinChip" type="button" hidden title="Pinned on the plan — tap to jump there"></button>
+      <select id="svPhotoCat" aria-label="Photo category" hidden title="Where this photo came from"></select>
+      <input id="svPhotoFrom" placeholder="From (e.g. Paul Murphy · WhatsApp)" aria-label="Photo credit" hidden>
+      <span class="sv-grow"></span>
+      <span class="sv-menu-wrap"><button class="btn btn-sm" id="svPageBtn" type="button" title="Page actions">⋯</button>
+        <div class="sv-menu" id="svPageMenu" hidden>
+          <button class="btn" id="svPhotoRetake" type="button" hidden>📷 Retake photo</button>
+          <button class="btn" id="svPhotoChange" type="button" hidden>🖼 Change photo</button>
+          <button class="btn" id="svHistory" type="button">⟲ Page history</button>
+          <button class="btn" id="svRemove" type="button">🗑 Remove page</button>
+        </div></span>
+    </div>
+    <div class="sv-palette" id="svPalette" hidden>
+      <div class="sv-ctx-inks" id="svCtxInks"><div class="sv-swatches" id="svColours"></div><span class="sv-ink-name" id="svInkName"></span><span class="sv-mark-gap"></span><div class="sv-swatches" id="svWidths"></div><span class="sv-mark-gap"></span><div class="sv-swatches" id="svStab" title="Stabiliser — smooths Pencil wobble (1€ filter): off · light · strong"><span class="sv-obj-group">Steady</span></div></div>
+      <div class="sv-marks" id="svMarks" hidden></div>
+      <div class="sv-marks sv-objects" id="svObjects" hidden></div>
+    </div>
+    <div class="sv-canvas" id="svCanvas" hidden data-tool="pen"></div>
+    <button class="sv-fab" id="svFab" type="button" title="Take a photo — a new photo page, titled from the room you are in" aria-label="Take a photo">📷</button>
+    <div class="sv-focus-chip" id="svFocusChip"><span id="svFocusWhere"></span><button class="btn btn-sm" id="svFocusExit" type="button">Exit focus</button></div>
+    <div id="svCheck" hidden></div>
+    <div class="sv-empty" id="svEmpty">
+      <h2>Survey</h2>
+      <p>Pick a project in the bar above, then <b>＋ New survey</b>. Pages: blank / lined / grid notes, the Takeoffs plan for any floor, a photo, or a checklist for the service you're surveying — all synced to the project. Drop or paste photos straight onto a page.</p>
+      <p class="muted">Works offline — pages queue and sync when signal returns.</p>
+    </div>
+  </div>
+</div>
+
+<div id="svAddMenu" hidden>
+  <button class="btn" type="button" data-add="blank">📄 Blank page</button>
+  <button class="btn" type="button" data-add="lined">📝 Lined page</button>
+  <button class="btn" type="button" data-add="grid">▦ Grid page</button>
+  <button class="btn" type="button" data-add="plan">🗺 Plan (Takeoffs floor)</button>
+  <button class="btn" type="button" data-add="photo">📷 Take photo</button>
+  <button class="btn" type="button" data-add="photo-lib">🖼 Photo pages from library</button>
+  <button class="btn" type="button" data-add="received">📥 Received photos (pre-visit)…</button>
+  <button class="btn" type="button" data-add="image">🖼 Insert image on this page</button>
+  <button class="btn" type="button" data-add="checklist">☑ Checklist / questions…</button>
+  <button class="btn" type="button" id="svPortrait">▭ Landscape pages</button>
+</div>
+<input type="file" id="svImageIn" accept="image/*" multiple hidden>
+<input type="file" id="svPhotoIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="svPhotoLib" accept="image/*" multiple hidden>
+<input type="file" id="svPhotoPick" accept="image/*" hidden>
+
+<div class="sv-modal" id="svModal" hidden>
+  <div class="sv-modal-card">
+    <div class="sv-modal-h"><span id="svModalTitle"></span><button class="btn btn-sm" id="svModalClose" type="button">✕</button></div>
+    <div class="sv-modal-b" id="svModalBody"></div>
+  </div>
+</div>
+<div id="svToast" hidden></div>
+
+<script>
+  const APP_VERSION = '0.11.5-demo';
+  window.APP_VERSION = APP_VERSION;   // a top-level const is not a window property — SonorApp reads global.APP_VERSION for the header badge
+  SonorApp.init({ appKey: 'survey', appName: 'Survey', repo: 'sonor-survey', appVersion: APP_VERSION });
+</script>
+<script src="../data/survey-app.js"></script>
+<script src="../data/survey-field.js"></script>   <!-- v0.7.0 field chrome: project finder · saving state · finish flow · focus mode · menus -->
+</body>
+</html>
