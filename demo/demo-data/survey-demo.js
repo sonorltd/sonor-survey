@@ -1,4 +1,4 @@
-/* Sonor Survey — DEMO SANDBOX (v1.0.0, 2026-10-15)
+/* Sonor Survey — DEMO SANDBOX (v1.0.1, 2026-10-15)
  * Bryn: "a demo sandboxed version of this hosted on web that shows 31 Prestbury as example that I can send a link to
  * someone, without them accidentally being able to get into other apps and links".
  * This file replaces the whole back end. The real app code is untouched: it talks to `window.SonorDB().client`, which here
@@ -68,16 +68,25 @@
   };
 
   function load() {
-    var req = new XMLHttpRequest(); req.open('GET', 'demo-data/demo-snapshot.json', false); req.send(null);   // sync on purpose: SonorDB() is constructed synchronously by the app
+    var req = new XMLHttpRequest(); req.open('GET', 'data/demo-snapshot.json', false); req.send(null);   // sync on purpose: SonorDB() is constructed synchronously by the app
     SNAP = JSON.parse(req.responseText);
     T.projects = [SNAP.project]; T.survey_sessions = SNAP.sessions; T.survey_pages = SNAP.pages; T.takeoffs_floors = SNAP.floors; T.takeoffs_floor_plans = SNAP.plans; T.survey_templates = SNAP.templates || []; T.survey_page_history = []; T.app_versions = [];
   }
   function SonorDB() { if (!SNAP) load(); this.client = client; }
   // the demo always opens on its one project (the app otherwise waits for ?pid= or a remembered pick)
   try { load(); ['sonor_active_project_id', 'sonor_active_project_id::survey'].forEach(function (k) { localStorage.setItem(k, SNAP.project.id); }); } catch (e) { }
+  // v1.0.1 — dark like every other back-end app: sonor-theme.js falls back to 'slate' (light) when the origin has no stored
+  // choice and the host page didn't put data-theme on <html> (the artifact host doesn't). First visit → graphite; the
+  // viewer's own toggle still sticks after that.
+  try {
+    var th = localStorage.getItem('sonor-theme');
+    if (th !== 'graphite' && th !== 'slate') { th = 'graphite'; localStorage.setItem('sonor-theme', th); }
+    document.documentElement.setAttribute('data-theme', th); document.documentElement.style.colorScheme = th === 'graphite' ? 'dark' : 'light';
+    if (global.SonorTheme && global.SonorTheme.set) global.SonorTheme.set(th, { silent: true });
+  } catch (e) { }
   SonorDB.prototype.ping = function () { return Promise.resolve(true); };
   global.SonorDB = SonorDB;
-  global.SurveyDemo = { snapshot: function () { return SNAP; }, tables: T, VERSION: '1.0.0' };
+  global.SurveyDemo = { snapshot: function () { return SNAP; }, tables: T, VERSION: '1.0.1' };
 
   // ---- demo chrome: no way out, and say so ----
   document.addEventListener('DOMContentLoaded', function () {
