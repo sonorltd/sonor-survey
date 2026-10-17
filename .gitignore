@@ -6,3 +6,7 @@ __pycache__/
 archive/
 
 _to_delete/
+
+# Full DB dump (client data, device passwords, API keys) — never commit,
+# at any depth. Audit 2026-10-17.
+**/data/backups/
