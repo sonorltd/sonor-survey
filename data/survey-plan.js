@@ -43,7 +43,7 @@ window.SurveyPlan = (function () {
   }
   async function renderPdf(buf, pageIndex) {
     if (!window.pdfjsLib) throw new Error('pdf.js not loaded');
-    var doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    var doc = await pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise;
     var page = await doc.getPage(Math.min(Math.max(1, pageIndex | 0), doc.numPages));
     var vp1 = page.getViewport({ scale: 1 }), scale = Math.min(6, 4600 / Math.max(vp1.width, vp1.height));   // v0.6.0 HI-RES: 4600 px long edge (A1 ≈ 140 dpi; stays under Safari's 16.7 MP canvas cap)
     var vp = page.getViewport({ scale: scale });

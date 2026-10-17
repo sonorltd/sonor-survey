@@ -4,13 +4,14 @@
  *     opaque responses are kept — before, `r.ok` is false for an opaque response so they were never cached and an offline
  *     refresh lost supabase-js → blank app. Now a refresh with no signal boots from the cache and the IndexedDB store.
  *   · a navigate with any ?pid=&session= query serves the cached shell when the network is away. */
-const CACHE_VERSION = 'sonor-survey-0.11.6';
+const CACHE_VERSION = 'sonor-survey-0.11.7';
 const SHELL = ['./sonor-survey.html', './manifest.webmanifest', '../sonor-db.js', '../data/sonor-theme.js', '../data/brand.css', '../data/sonor-header.css', '../data/sonor-components.css', '../data/app-vars.css',
   '../data/sonor-brand.js', '../data/sonor-app.js', '../data/sonor-icons.js', '../data/sonor-header.js', '../data/sonor-project-list.js', '../data/sonor-project-bar.js',
   '../data/sonor-ink.js', '../data/sonor-survey-link.js', '../data/survey-config.js', '../data/survey-ink.js', '../data/survey-store.js', '../data/survey-plan.js', '../data/survey-checklist.js', '../data/survey-pdf.js', '../data/survey-app.js', '../data/survey-field.js', '../data/sonor-pdf-luxury.js', '../data/fonts/gilroy-extrabold.otf', '../data/fonts/gilroy-regular.otf', '../data/fonts/gilroy-ultralight.otf', '../data/cedia-member-stacked.png', '../data/survey-cover.jpg', '../data/favicon.svg',
   '../data/kit/kit.js', '../data/kit/manifest.json', '../data/kit/kit.css', '../data/kit/vocab.css'];   // the kit's local mirror (html onerror fallback) — its modules cache at runtime
-const KIT = ['https://sonorltd.github.io/sonor-kit/v1/kit.js', 'https://sonorltd.github.io/sonor-kit/v1/manifest.json'];   // module + fetch → CORS mode (an opaque copy can't feed a module script)
-const VENDOR = ['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+const KIT = ['https://sonorltd.github.io/sonor-kit/v1/kit.js', 'https://sonorltd.github.io/sonor-kit/v1/manifest.json',   // module + fetch → CORS mode (an opaque copy can't feed a module script)
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4'];   // pinned + SRI + crossorigin (2026-10-17) → CORS mode too: an opaque copy fails the integrity check
+const VENDOR = ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js', 'https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js'];
 const CDN = /cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.(googleapis|gstatic)\.com|sonorltd\.github\.io/;
 const keep = r => r && (r.ok || r.type === 'opaque');
