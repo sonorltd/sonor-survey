@@ -1,6 +1,6 @@
 # Survey — Claude Code Context (v0.11.6)
 
-> **Current version: 0.11.6** · **Spine version: 1.3** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader; SonorShell adoption = B-318 sweep)
+> **Current version: 0.11.6** · **Spine version: 1.2.6** (SONOR-APP-SPINE.md — kit-served, graphite, SonorHeader + SonorApp.init; NOT shell-mounted yet, so per GEL invariant 3 the declaration stays 1.2.6 until SonorShell lands = B-318. Blockers found 2026-10-17: SonorPalette's ⌘K collides with the field project finder's ⌘K (survey-field.js), shell toasts replace `#svToast` on the fixed iPad layout, and sonor-shell.js / sonor-palette.js / sonor-shell.css must join the SW precache — do it with an iPad test, not blind)
 > Inherits: `../CLAUDE.md` (master rules) · Brand source: `../Branding - CORE/brand-core.xml`
 > Born 2026-10-12 via `register-app.sh` (Bryn: "a survey app, essentially a notepad like Notability … Apple Pencil … markup plans during client meetings and site survey … link end to end for the project, with survey photos and plan markups, plus notes" — "a bit like Takeoffs in principle but a bit more basic").
 
