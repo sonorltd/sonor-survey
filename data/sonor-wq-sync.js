@@ -1,9 +1,6 @@
 /**
  * sonor-wq-sync.js — CANONICAL MASTER (sonor-platform §24 — one WeQuote sync, every app)
-<<<<<<< HEAD
-=======
  * v1.7.4 · 2026-10-17 — the wq-proxy fallback sends the project (anon) key (apikey + Bearer) so wq-proxy can be key-gated (EDGE_KEY_ENFORCE).
->>>>>>> 231b5d6 (Takeover v0.2.0: WQ area order, optional = active 0, prices as quotation reference, area totals via wq-proxy v5; sonor-wq-client 1.4.0 synced)
  * v1.7.3 · 2026-10-17 — MERGE-ONLY (projects.metadata law): every metadata write goes through the sonor_merge_project_metadata RPC
  *   (server-side `metadata || patch`), so a key another app wrote between our read and our write can no longer be dropped. The
  *   old read-then-replace only runs if the RPC call itself fails. Column patches (ref / client_* / address / value_quoted) are a
@@ -54,11 +51,7 @@
  */
 (function (global) {
   'use strict';
-<<<<<<< HEAD
-  var VERSION = '1.7.3';
-=======
   var VERSION = '1.7.4';
->>>>>>> 231b5d6 (Takeover v0.2.0: WQ area order, optional = active 0, prices as quotation reference, area totals via wq-proxy v5; sonor-wq-client 1.4.0 synced)
   var _cfgCache = new Map();   // client → config | false
   async function getConfig(client) {
     if (_cfgCache.has(client)) return _cfgCache.get(client);
