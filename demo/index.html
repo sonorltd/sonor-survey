@@ -228,11 +228,12 @@ body.sv-focus .sv-focus-chip { display: flex; }
 <div class="sv-bar sv-bar-top" data-bar>
   <button class="btn sv-find" id="svFind" type="button" title="Find a project — by number, name or address (⌘K)">🔎 <span class="lbl" id="svFindLbl">Project</span></button>
   <select id="svSession" aria-label="Survey session"></select>
+  <span id="svSessionWho" class="sv-who" title="Last edited by"></span>
   <span class="sv-menu-wrap"><button class="btn" id="svSurveyBtn" type="button" title="Survey actions">☰ <span class="lbl">Survey</span> ▾</button>
     <div class="sv-menu" id="svSurveyMenu" hidden>
       <button class="btn" id="svNew" type="button">＋ New survey</button>
       <label class="sv-menu-row">Kind <select id="svKind" aria-label="Kind"></select></label>
-      <button class="btn" id="svEngineer" type="button">👤 Engineer…</button>
+      <label class="sv-menu-row">👤 Engineer <select id="svEngineer" data-sonor-people="+none" aria-label="Engineer"><option value="">— Unassigned</option></select></label>
       <span class="sv-menu-sep"></span>
       <button class="btn" id="svClose" type="button">✓ Complete survey</button>
       <button class="btn" id="svPublish" type="button">⬆ Publish to project</button>

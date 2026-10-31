@@ -47,15 +47,24 @@
     try { var r = await Promise.race([supa.from('projects').select('id,ref,name,client_name,address,postcode').eq('id', S.pid).maybeSingle(), new Promise(function (res) { setTimeout(function () { res({}); }, 6000); })]); if (r.data) S.project = r.data; } catch (e) { }
     return S.project || { id: S.pid, name: '' };
   }
+  // v0.11.8 — SonorWho (gateway-injected; absent on the old github.io address → plain text, never throws)
+  function whoLabel(v) { try { return (window.SonorWho && window.SonorWho.label(v)) || v || ''; } catch (e) { return v || ''; } }
+  function meEmail() { var u = window.__SONOR_USER__; return (u && u.email) || null; }
+  function renderEngineer() {
+    var sel = $('#svEngineer'); if (!sel || sel.tagName !== 'SELECT') return; var v = (S.session && S.session.engineer) || '';
+    sel.setAttribute('data-value', v); sel.innerHTML = '<option value="">— Unassigned</option>' + (v ? '<option value="' + esc(v) + '">' + esc(whoLabel(v)) + '</option>' : ''); sel.value = v; sel.__swFilled = -1;
+    try { if (window.SonorWho) window.SonorWho.fillSelect(sel, { value: v }); } catch (e) { }
+    sel.disabled = !S.session;
+  }
   function renderSessions() {
     var sel = $('#svSession'); sel.innerHTML = '';
     if (!S.sessions.length) { sel.innerHTML = '<option value="">No surveys yet — + New</option>'; return; }
-    S.sessions.forEach(function (s) { var o = document.createElement('option'); o.value = s.id; o.textContent = (s.status === 'closed' ? '✓ ' : '') + s.title + ' · ' + fmtDate(s.started_at) + (s.engineer ? ' · ' + s.engineer : ''); sel.appendChild(o); });
+    S.sessions.forEach(function (s) { var o = document.createElement('option'); o.value = s.id; o.textContent = (s.status === 'closed' ? '✓ ' : '') + s.title + ' · ' + fmtDate(s.started_at) + (s.engineer ? ' · ' + whoLabel(s.engineer) : ''); sel.appendChild(o); });
     if (S.session) sel.value = S.session.id;
   }
   async function newSession() {
     if (!S.pid) return toast('Pick a project first');
-    var eng = ''; try { eng = localStorage.getItem('sonor_survey_engineer') || ''; } catch (e) { }
+    var eng = meEmail();   // v0.11.8 — the signed-in person (was a typed name in localStorage)
     var kind = $('#svKind').value || 'survey';
     var label = (CFG.sessionKinds.find(function (k) { return k[0] === kind; }) || ['', 'Site survey'])[1];
     var row = await window.SurveyStore.createSession(S.pid, { title: label + ' ' + fmtDate(new Date().toISOString()), kind: kind, engineer: eng || null });
@@ -66,6 +75,7 @@
     S.session = S.sessions.find(function (s) { return s.id === sid; }) || null; if (!S.session) return;
     S.pinFloor = null; loadPinFloor();   // v0.7.0 pin numbers are project-wide — know the floor before the first pin lands
     $('#svSession').value = sid; $('#svKind').value = S.session.kind || 'survey';
+    var swho = $('#svSessionWho'); if (swho) swho.setAttribute('data-sonor-row', 'survey_sessions:' + sid); renderEngineer();
     $('#svClose').textContent = S.session.status === 'closed' ? '↩ Reopen survey' : '✓ Complete survey';
     S.pages = (await window.SurveyStore.listPages(S.pid, sid)).filter(function (p) { return !(p.metadata && p.metadata.hidden); });
     renderStrip();
@@ -345,9 +355,9 @@
   function renderStrip() {
     var host = $('#svPages'); host.innerHTML = '';
     S.pages.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); }).forEach(function (p) {
-      var el = document.createElement('div'); el.className = 'sv-thumb' + (S.page && S.page.id === p.id ? ' active' : ''); el.dataset.id = p.id;
+      var el = document.createElement('div'); el.className = 'sv-thumb' + (S.page && S.page.id === p.id ? ' active' : ''); el.dataset.id = p.id; el.setAttribute('data-sonor-row', 'survey_pages:' + p.id);
       var lbl = p.title || (p.kind === 'checklist' ? ((p.metadata || {}).checklist || {}).name : null) || (p.floor_code ? p.floor_code : null);   // v0.2.1: the title replaces the kind, not prefixes it
-      el.innerHTML = '<div class="sv-thumb-img"><img alt=""></div><div class="sv-thumb-lbl">' + (lbl ? esc(lbl) : '<span class="sv-thumb-kind">' + esc(p.kind) + '</span>') + '</div>';
+      el.innerHTML = '<div class="sv-thumb-img"><img alt=""><span class="sv-thumb-who" data-sonor-who-slot></span></div><div class="sv-thumb-lbl">' + (lbl ? esc(lbl) : '<span class="sv-thumb-kind">' + esc(p.kind) + '</span>') + '</div>';
       el.onclick = function () { openPage(p.id); };
       host.appendChild(el); thumbFor(p, el);
     });
@@ -367,6 +377,7 @@
   }
   function renderPageMeta() {
     var p = S.page; $('#svTitle').value = p.title || ''; $('#svRoom').value = p.room || '';
+    var pwho = $('#svPageWho'); if (pwho) pwho.setAttribute('data-sonor-row', 'survey_pages:' + p.id);
     var fl = $('#svFloor'); fl.innerHTML = '<option value="">Floor</option>';
     (S.floors || []).forEach(function (f) { var o = document.createElement('option'); o.value = f.code; o.textContent = f.code + (f.name ? ' · ' + f.name : ''); fl.appendChild(o); });
     if (p.floor_code && !$$('option', fl).some(function (o) { return o.value === p.floor_code; })) { var o = document.createElement('option'); o.value = p.floor_code; o.textContent = p.floor_code; fl.appendChild(o); }
@@ -483,10 +494,10 @@
     if (!S.session) return toast('Open a survey first');
     flushSave(); toast('Building the report…');
     try {
-      var proj = await projectRow(), eng = ''; try { eng = localStorage.getItem('sonor_survey_engineer') || ''; } catch (e) { }
+      var proj = await projectRow(), eng = whoLabel(S.session.engineer || meEmail() || '');
       var pages = [], cover = null;
       for (var i = 0; i < S.pages.length; i++) { var p = S.pages[i]; var m = p.kind === 'checklist' ? null : await pageModel(p); pages.push({ row: p, model: m }); if (!cover && p.kind === 'photo') cover = await window.SurveyStore.photoBlob(p.id); }
-      var bytes = await window.SurveyPdf.report({ project: proj, session: S.session, pages: pages, engineer: eng || S.session.engineer, coverBlob: cover });
+      var bytes = await window.SurveyPdf.report({ project: proj, session: S.session, pages: pages, engineer: eng || null, coverBlob: cover });
       var name = ((proj.ref || proj.name || 'survey') + ' — ' + (S.session.title || 'Survey') + '.pdf').replace(/[\/\\:]/g, '-');
       window.SurveyPdf.download(bytes, name); toast('Report ready — ' + Math.round(bytes.length / 1024) + ' KB');
     } catch (e) { console.error(e); toast('Report failed: ' + e.message); }
@@ -646,7 +657,7 @@
       $('#rmCancel', body).onclick = closeModal; $('#rmGo', body).onclick = function () { closeModal(); hidePage(); };
       openModal('Remove page', body);
     };
-    $('#svEngineer').onclick = function () { var cur = ''; try { cur = localStorage.getItem('sonor_survey_engineer') || ''; } catch (e) { } var v = prompt('Your name (stamped on new surveys + the report)', cur); if (v != null) { try { localStorage.setItem('sonor_survey_engineer', v.trim()); } catch (e) { } if (S.session) { S.session.engineer = v.trim(); window.SurveyStore.updateSession(S.pid, S.session.id, { engineer: v.trim() }); renderSessions(); } } };
+    $('#svEngineer').onchange = function () { if (!S.session) return; var v = this.value || null; S.session.engineer = v; window.SurveyStore.updateSession(S.pid, S.session.id, { engineer: v }); renderSessions(); };   // v0.11.8 user picker (email) — no typed names
     $('#svPublish').onclick = publish;
     document.addEventListener('keydown', function (e) {
       if (S.textEd || (e.target && e.target.closest && e.target.closest('textarea, input'))) return;
