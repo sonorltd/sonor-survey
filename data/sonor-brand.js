@@ -173,7 +173,8 @@ window.__SONOR_BRAND__ = {
       kit:            '../sonor-kit/catalogue/index.html',
       partners:       '../HUB - Partners/index.html',
       'service-contracts': '../APP - Service Contracts/dashboard/sonor-service-contracts.html',
-      takeover:       '../APP - Takeover/dashboard/sonor-takeover.html'
+      takeover:       '../APP - Takeover/dashboard/sonor-takeover.html',
+      'led-calc':     '../APP - LED Calc/dashboard/sonor-led-calc.html'
     },
     hosted: {
       master:      'https://sonorltd.github.io/sonor-master/',
@@ -254,7 +255,8 @@ window.__SONOR_BRAND__ = {
       kit:            'https://sonorltd.github.io/sonor-kit/catalogue/',
       partners:       'https://sonorltd.github.io/sonor-partners/',
       'service-contracts': 'https://sonorltd.github.io/sonor-service-contracts/',
-      takeover:       'https://sonorltd.github.io/sonor-takeover/'
+      takeover:       'https://sonorltd.github.io/sonor-takeover/',
+      'led-calc':     'https://sonorltd.github.io/sonor-led-calc/'
     }
   },
 
