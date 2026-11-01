@@ -135,10 +135,10 @@ window.SurveyPdf = (function () {
       state.n++;
       if (!state.dry) {
         // v0.5.1 — PERMANENT cover (Bryn: "use a permanent image for the front cover, something that shows survey plans"): data/survey-cover.jpg; the first site photo is only the offline fallback
-        var hero = null; try { hero = await lx.loadImage(doc, BASE + 'survey-cover.jpg'); } catch (e) { try { if (m.coverBlob) hero = await blobJpg(doc, m.coverBlob); } catch (e2) { } }
+        var hero = null, heroArt = false; try { hero = await lx.loadCoverArt(doc, BASE + 'survey-cover.jpg'); heroArt = true; } catch (e) { try { if (m.coverBlob) hero = await blobJpg(doc, m.coverBlob); } catch (e2) { } }   // cover art set (2026-11-01): the house art → art layout; a site photo keeps the photo layout
         var cp = doc.addPage([A4.w, A4.h]), CP = lx.mk(cp, doc);
         lx.cover(CP, F, { hero: hero, fadeImg: fade, eyebrow: kindLabel(m.session.kind), title: pd(m.session.title || kindLabel(m.session.kind)), subtitle: pd([m.project.name, m.project.address].filter(Boolean).join(' · ')),
-          info: [['CLIENT', pd(m.project.client_name || '—')], ['DATE', fmtDate(m.session.started_at)], ['ENGINEER', pd(m.engineer || m.session.engineer || 'Sonor')]], cediaImg: cedia, brandLarge: true, brandColour: lx.COL.GOLD, topShade: 0.6, airy: true });   // gold mark on the bright hero
+          info: [['CLIENT', pd(m.project.client_name || '—')], ['DATE', fmtDate(m.session.started_at)], ['ENGINEER', pd(m.engineer || m.session.engineer || 'Sonor')]], cediaImg: cedia, brandLarge: true, brandColour: heroArt ? lx.COL.CREAM : lx.COL.GOLD, topShade: 0.6, airy: true, layout: heroArt ? 'art' : undefined });   // gold mark on a bright site photo, cream on the black art
       }
       // ── summary ──
       var P = newPage('SUMMARY');
