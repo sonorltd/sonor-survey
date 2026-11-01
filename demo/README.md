@@ -7,7 +7,7 @@ pre-rasterised to JPEG, so no PDF rendering). No anon key, no project list, no c
 worker — the red "Demo · nothing saves" tag says so. Drawing, devices, objects, pins, photos and the report all work locally.
 
 - Hosted copy for a link: claude.ai artifact (published 2026-10-15) — file downloads (the report PDF) are inert there.
-- GitHub Pages: https://sonorltd.github.io/sonor-survey/demo/ after push — everything works, incl. Export report.
+- GitHub Pages: https://apps.sonor.co.uk/sonor-survey/demo/ after push — everything works, incl. Export report.
 - Refresh the snapshot: `tests/make-demo-snapshot.py` (reads the live project, scrubs, writes demo-data + assets).
 
 The app files are loaded from `../data/` (the real ones) so the demo never drifts from the app.

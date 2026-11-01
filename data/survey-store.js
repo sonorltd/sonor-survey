@@ -248,7 +248,7 @@ window.SurveyStore = (function () {
       marks_by_floor: marksByFloor,
       objects_by_floor: objectsByFloor,   // v0.11.0 site objects (radiators, steels, existing kit) — context, not supply
       pins: pins.map(function (q) { return { id: q.id, pin: q.pin, n: q.n, text: q.text || '', to: q.to || null, floor: q.floor, page_id: q.page_id, session_id: q.session_id, x: q.x, y: q.y, plan_id: q.plan_id, status: q.status || 'open' }; }),   // v0.6.0 — Tasks (snags, B-530) + Portal read these
-      url: 'https://sonorltd.github.io/sonor-survey/?pid=' + pid
+      url: 'https://apps.sonor.co.uk/sonor-survey/?pid=' + pid
     } };
     if (planNotesPatch) patch.plan_notes = planNotesPatch;
     var r = await supa.rpc('sonor_merge_project_metadata', { p_project_id: pid, p_patch: patch });

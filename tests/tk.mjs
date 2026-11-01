@@ -4,11 +4,11 @@ const S = '/tmp/claude-0/-home-claude/bf21c3cb-6963-595d-a9f3-d79a6f8dc341/scrat
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
 const ctx = await browser.newContext({ viewport: { width: 1700, height: 1000 } }); const page = await ctx.newPage();
 const errs = []; page.on('pageerror', e => errs.push(e.message.slice(0, 160)));
-await page.route('https://sonorltd.github.io/sonor-takeoffs/sonor-takeoffs.html*', r => r.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(S + '/tk-patched.html', 'utf8') }));
-await page.route('https://sonorltd.github.io/sonor-takeoffs/data/sonor-takeoffs-survey.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(S + '/takeoffs/sonor-takeoffs-survey.js', 'utf8') }));
-await page.route('https://sonorltd.github.io/sonor-takeoffs/data/sonor-ink.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(S + '/root/sonor-ink.js', 'utf8') }));
+await page.route('https://apps.sonor.co.uk/sonor-takeoffs/sonor-takeoffs.html*', r => r.fulfill({ status: 200, contentType: 'text/html', body: fs.readFileSync(S + '/tk-patched.html', 'utf8') }));
+await page.route('https://apps.sonor.co.uk/sonor-takeoffs/data/sonor-takeoffs-survey.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(S + '/takeoffs/sonor-takeoffs-survey.js', 'utf8') }));
+await page.route('https://apps.sonor.co.uk/sonor-takeoffs/data/sonor-ink.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(S + '/root/sonor-ink.js', 'utf8') }));
 await page.addInitScript(() => { try { localStorage.setItem('sonor_active_project_id::takeoffs', 'ce20bee2-c58a-4df9-bf75-59bc5a588b04'); localStorage.setItem('sonor_active_project_id', 'ce20bee2-c58a-4df9-bf75-59bc5a588b04'); } catch (e) {} });
-await page.goto('https://sonorltd.github.io/sonor-takeoffs/sonor-takeoffs.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'load' }); await page.waitForTimeout(9000);
+await page.goto('https://apps.sonor.co.uk/sonor-takeoffs/sonor-takeoffs.html?pid=ce20bee2-c58a-4df9-bf75-59bc5a588b04', { waitUntil: 'load' }); await page.waitForTimeout(9000);
 await page.evaluate(async () => { try { if (typeof _switchToProject === 'function') await _switchToProject('ce20bee2-c58a-4df9-bf75-59bc5a588b04', null, {}); } catch (e) { console.log('switch err', e.message); } }); await page.waitForTimeout(6000);
 let st = await page.evaluate(() => ({ row: !!document.querySelector('[data-layer-row="surveyInk"]'), pid: typeof currentProjectId !== 'undefined' ? currentProjectId : null, floor: typeof activeFloorId !== 'undefined' ? activeFloorId : null, layerCanvas: !!document.querySelector('.sonor-survey-ink-layer'), ink: !!window.SonorInk }));
 console.log('boot', st);
